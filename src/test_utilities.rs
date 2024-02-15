@@ -1,9 +1,13 @@
 //! Test cases and test utility functions.
 //!
 
-use indexmap::IndexMap;
+use crate::{
+    create_granges_with_seqlens,
+    prelude::{GRanges, VecRangesIndexed},
+    ranges::{coitrees::COITrees, vec::VecRanges, RangeEmpty},
+    Position,
+};
 use rand::{thread_rng, Rng};
-use crate::{Position, ranges::{RangeIndexed, vec::VecRanges, RangeEmpty}};
 
 // Stochastic test ranges defaults
 //
@@ -34,8 +38,7 @@ pub fn random_range(chrom_len: Position) -> (Position, Position) {
 /// Build random sequence lengths
 pub fn random_seqlen() -> Position {
     let mut rng = thread_rng();
-    let rand_len = rng.gen_range(MIN_CHROM_LEN..=MAX_CHROM_LEN);
-    rand_len
+    rng.gen_range(MIN_CHROM_LEN..=MAX_CHROM_LEN)
 }
 
 /// Sample a random chromosome
@@ -56,6 +59,30 @@ pub fn random_vecranges(n: usize) -> VecRanges<RangeEmpty> {
     vr
 }
 
+/// Build random [`COITrees`] from a random [`VecRanges`].
+pub fn random_coitrees() -> COITrees<()> {
+    let vr = random_vecranges(100);
+    let cr: COITrees<()> = vr.into();
+    cr
+}
 
-
- 
+/// Range test case #1
+///
+/// Ranges:
+///   - chr1:
+///      (0, 5, Some(1.1))
+///      (4, 7, Some(8.1))
+///      (10, 17, Some(10.1))
+///   - chr2:
+///      (10, 20, Some(3.7))
+///      (18, 32, Some(1.1))
+///
+/// Seqlens: { "chr1" => 30, "chr2" => 100 }
+///
+/// Sum of all elements: 24.1
+pub fn granges_test_case_01() -> GRanges<VecRangesIndexed, Vec<f64>> {
+    create_granges_with_seqlens!(VecRangesIndexed, Vec<f64>, {
+        "chr1" => [(0, 5, 1.1), (4, 7, 8.1), (10, 17, 10.1)],
+        "chr2" => [(10, 20, 3.7), (18, 32, 1.1)]
+    }, seqlens: { "chr1" => 30, "chr2" => 100 })
+}

@@ -1,48 +1,74 @@
-use coitrees::{Interval, BasicCOITree, IntervalTree, IntervalNode, GenericInterval};
+use coitrees::{BasicCOITree, GenericInterval, Interval, IntervalNode, IntervalTree};
 
-use crate::{Position, traits::RangeContainer, error::GRangesError};
+use crate::{error::GRangesError, traits::{RangeContainer}, traits::RangesIterable, Position};
 
-use super::{vec::VecRanges, RangeIndexed, validate_range};
+use super::{validate_range, vec::VecRanges, RangeEmpty, RangeIndexed};
 
-type COITreeIntervalIndexed = Interval<usize>;
+pub type COITreesIndexed = COITrees<usize>;
+
+impl GenericInterval<()> for RangeEmpty {
+    fn first(&self) -> i32 {
+        self.start.try_into().unwrap()
+    }
+    fn last(&self) -> i32 {
+        self.end.try_into().unwrap()
+    }
+    fn metadata(&self) -> &() {
+        &()
+    }
+}
 
 impl GenericInterval<usize> for RangeIndexed {
     fn first(&self) -> i32 {
-        self.start().try_into().unwrap()
+        self.start.try_into().unwrap()
     }
     fn last(&self) -> i32 {
-        self.end().try_into().unwrap()
+        self.end.try_into().unwrap()
     }
     fn metadata(&self) -> &usize {
-       self.index()
+        &self.index
     }
 }
 
 /// A [`coitrees::BasicCOITree`] interval tree for a single sequence's ranges.
 ///
-/// This is generic over the interval type, to handle the case where one 
-/// may want to do overlap operations on ranges without associated data in 
+/// This is generic over the interval type, to handle the case where one
+/// may want to do overlap operations on ranges without associated data in
 /// a data container (e.g. ranges that just define megabase windwows).
-pub struct COITreeRangeContainer<R: Clone> {
-    ranges: BasicCOITree<R, usize>,
+///
+pub struct COITrees<M: Clone> {
+    pub(crate) ranges: BasicCOITree<M, usize>,
     /// The sequence length, used to validate new ranges.
-    length: Position,
+    pub length: Position,
 }
 
-impl<R: Clone> COITreeRangeContainer<R> {
+impl<M: Clone> std::fmt::Debug for COITrees<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("COITrees")
+            .field("number of ranges:", &self.ranges.len()) 
+            .field("length", &self.length) 
+            .finish()
+    }
+}
+
+impl<M: Clone> COITrees<M> {
+    /// Validate a range, raising an error if it is invalid for some reason.
     pub fn validate_range(&self, start: Position, end: Position) -> Result<(), GRangesError> {
-        let range = start..end;
-        validate_range(&range, self.length)
+        validate_range(start, end, self.length)
     }
 
-    pub fn query<F>(&self, start: Position, end: Position, visit: F) 
-    where F: FnMut(&IntervalNode<R, usize>) {
-        // Note the terminology change to match coitrees (and uses i32s)
-        let first = start.try_into().expect("could not covert");
-        let end: i32  = end.try_into().expect("could not covert");
-        // internally coitrees uses 0-indexed, right-inclusive "last"
-        self.ranges.query(first, end - 1, visit)
-    }
+    /// Query this range container for a particular range, and call a visit function on all
+    /// overlapping ranges.
+    pub fn query<F>(&self, start: Position, end: Position, visit: F)
+        where
+        F: FnMut(&IntervalNode<M, usize>),
+        {
+            // Note the terminology change to match coitrees (and uses i32s)
+            let first = start.try_into().expect("could not covert");
+            let end: i32 = end.try_into().expect("could not covert");
+            // internally coitrees uses 0-indexed, right-inclusive "last"
+            self.ranges.query(first, end - 1, visit)
+        }
 
     /// Return the number of ranges in this [`COITreeRangeContainer`] container.
     pub fn len(&self) -> usize {
@@ -53,22 +79,92 @@ impl<R: Clone> COITreeRangeContainer<R> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-
 }
 
-impl<R: Clone + GenericInterval<R>> From<VecRanges<R>> for COITreeRangeContainer<R> {
+/// Convert a [`VecRanges`] range container to a [`COITrees`] range container.
+impl<R: Clone + GenericInterval<M>, M: Clone> From<VecRanges<R>> for COITrees<M> {
     fn from(value: VecRanges<R>) -> Self {
         let ranges = BasicCOITree::new(&value.ranges);
         let length = value.length;
-        Self {
-            ranges,
-            length
+        Self { ranges, length }
+    }
+}
+
+/// Convert a [`COITrees`] range container to a [`VecRanges`] range container.
+impl From<COITrees<usize>> for VecRanges<RangeIndexed> {
+    fn from(value: COITrees<usize>) -> Self {
+        let length = value.length;
+        let mut ranges: VecRanges<RangeIndexed> = VecRanges::new(length);
+        for interval in value.ranges.iter() {
+            ranges.push_range(interval.into());
+        }
+        ranges
+    }
+}
+
+/// [`RangeContainer`] trait implementations.
+impl<R: Clone> RangeContainer for COITrees<R> {
+    fn len(&self) -> usize {
+        self.ranges.len()
+    }
+}
+
+/// Convert between [`coitrees::Interval`] with index metadata to a [`RangeEmpty`].
+impl From<Interval<&()>> for RangeEmpty {
+    fn from(value: Interval<&()>) -> Self {
+        RangeEmpty {
+            start: value.first.try_into().unwrap(),
+            end: value.last.try_into().unwrap(),
         }
     }
 }
 
-impl<R: Clone> RangeContainer for COITreeRangeContainer<R> {
-    fn len(&self) -> usize {
-        self.ranges.len()
+/// Convert between [`coitrees::Interval`] with index metadata to a [`RangeIndexed`].
+impl From<Interval<&usize>> for RangeIndexed {
+    fn from(value: Interval<&usize>) -> Self {
+        RangeIndexed {
+            start: value.first.try_into().unwrap(),
+            end: value.last.try_into().unwrap(),
+            index: *value.metadata(),
+        }
+    }
+}
+
+/// # Developer Notes
+///
+/// Internally, the [`coitrees`] iterator is over their interval type.
+/// Their iterator does not consume, but we need an owned (or copyable,
+/// as is case here) type to map out. Thus, we need this odd variant of
+/// an iterator that doesn't return references and does not consume.
+impl RangesIterable<RangeIndexed> for COITrees<usize> {
+    fn iter_ranges(&self) -> Box<dyn Iterator<Item = RangeIndexed> + '_> {
+        let iter = self.ranges.iter();
+        let converted_iter = iter.map(|interval| RangeIndexed::from(interval));
+        Box::new(converted_iter)
+    }
+}
+
+impl RangesIterable<RangeEmpty> for COITrees<()> {
+    fn iter_ranges(&self) -> Box<dyn Iterator<Item = RangeEmpty> + '_> {
+        let iter = self.ranges.iter();
+        let converted_iter = iter.map(|interval| RangeEmpty::from(interval));
+        Box::new(converted_iter)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::prelude::*;
+    use crate::ranges::RangeIndexed;
+    use crate::test_utilities::granges_test_case_01;
+
+    #[test]
+    fn test_ranges_iterable_coitrees() {
+        let gr = granges_test_case_01().to_coitrees().unwrap();
+        let mut chr1_iter = gr.get_ranges("chr1").unwrap().iter_ranges();
+        assert_eq!(chr1_iter.next().unwrap(), RangeIndexed::new(0, 5, 0));
+        assert_eq!(chr1_iter.next().unwrap(), RangeIndexed::new(4, 7, 1));
+        assert_eq!(chr1_iter.next().unwrap(), RangeIndexed::new(10, 17, 2));
+        assert!(chr1_iter.next().is_none());
     }
 }

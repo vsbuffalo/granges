@@ -1,27 +1,28 @@
-use crate::{traits::RangeContainer, Position, error::GRangesError};
+use super::{validate_range, RangeEmpty, RangeIndexed};
+use crate::traits::{RangesIntoIterable, RangesIterable};
+use crate::{error::GRangesError, traits::RangeContainer, Position};
 
-use super::{RangeIndexed, validate_range, RangeEmpty};
 pub type VecRangesIndexed = VecRanges<RangeIndexed>;
 pub type VecRangesEmpty = VecRanges<RangeEmpty>;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug)]
 pub struct VecRanges<R: Clone> {
-    pub (crate) ranges: Vec<R>,
+    pub(crate) ranges: Vec<R>,
     pub length: Position,
 }
 
 impl<R: Clone> VecRanges<R> {
-    pub fn validate_range(&self, start: Position, end: Position) -> Result<(), GRangesError> {
-        let range = start..end;
-        validate_range(&range, self.length)
-    }
-
     /// Create a new empty [`VecRanges`] container.
     pub fn new(length: Position) -> Self {
         Self {
             ranges: Vec::new(),
             length,
         }
+    }
+
+    /// Validate a range, raising an error if it is invalid for some reason.
+    pub fn validate_range(&self, start: Position, end: Position) -> Result<(), GRangesError> {
+        validate_range(start, end, self.length)
     }
 
     /// Add a new range to the [`VecRanges`] container.
@@ -43,5 +44,21 @@ impl<R: Clone> VecRanges<R> {
 impl<R: Clone> RangeContainer for VecRanges<R> {
     fn len(&self) -> usize {
         self.ranges.len()
+    }
+}
+
+impl RangesIntoIterable<RangeIndexed> for VecRanges<RangeIndexed> {
+    fn into_iter_ranges(self) -> Box<dyn Iterator<Item = RangeIndexed>> {
+        let iter = self.ranges.into_iter();
+        Box::new(iter)
+    }
+}
+
+impl RangesIterable<RangeIndexed> for VecRanges<RangeIndexed> {
+    fn iter_ranges(&self) -> Box<dyn Iterator<Item = RangeIndexed> + '_> {
+        let iter = self.ranges.iter();
+        // NOTE: RangeIndexed is copyable but there still is overhead here
+        let converted_iter = iter.map(|interval| interval.to_owned());
+        Box::new(converted_iter)
     }
 }
