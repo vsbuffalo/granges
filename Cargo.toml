@@ -1,0 +1,13 @@
+[package]
+name = "granges2"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+coitrees = { version = "0.4.0", features = ["nosimd"] }
+genomap = "0.1.5"
+indexmap = "2.2.3"
+rand = "0.8.5"
+thiserror = "1.0.57"
