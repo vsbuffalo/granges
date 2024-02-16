@@ -1,7 +1,16 @@
 //! Traits used by the GRanges library.
 //!
 
-use crate::{error::GRangesError, io::parsers::FilteredIntervals, ranges::RangeRecord};
+use crate::{error::GRangesError, io::parsers::FilteredIntervals, ranges::RangeRecord, Position};
+
+///
+pub trait GenericRange: Clone {
+    fn start(&self) -> Position;
+    fn end(&self) -> Position;
+    fn index(&self) -> Option<usize>;
+    fn set_start(&mut self, start: Position);
+    fn set_end(&mut self, end: Position);
+}
 
 /// Defines functionality common to all range containers, e.g. [`VecRanges<R>`] and
 /// [`COITrees`].
@@ -86,6 +95,12 @@ pub trait IndexedDataContainer<'a> {
 pub trait TsvSerialize {
     // Serialize something to a TSV [`String`].
     fn to_tsv(&self) -> String;
+}
+
+impl TsvSerialize for &String {
+    fn to_tsv(&self) -> String {
+        self.to_string()
+    }
 }
 
 impl TsvSerialize for String {

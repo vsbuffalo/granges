@@ -12,7 +12,7 @@ use crate::{
         vec::{VecRanges, VecRangesEmpty, VecRangesIndexed},
         RangeEmpty, RangeIndexed, RangeRecord,
     },
-    traits::{RangeContainer, RangesIterable, TsvSerialize},
+    traits::{RangeContainer, RangesIterable, TsvSerialize, GenericRange, IndexedDataContainer},
     Position,
 };
 
@@ -47,7 +47,7 @@ where
     }
 }
 
-impl<R: Clone, T> GRanges<VecRanges<R>, T> {
+impl<R: GenericRange, T> GRanges<VecRanges<R>, T> {
     /// Create a new [`GRanges`] object, with vector storage for ranges and data.
     ///
     /// This combination of range and data containers is used when loading data into
@@ -67,6 +67,16 @@ impl<R: Clone, T> GRanges<VecRanges<R>, T> {
                 .expect("Internal error: please report");
         }
         Self { ranges, data: None }
+    }
+
+    /// Consume this [`GRanges`] object and sort the ranges.
+    pub fn sort(mut self) -> Self {
+        self.ranges
+            .values_mut()
+            .for_each(|ranges| {
+                ranges.sort()
+            });
+        self
     }
 }
 
@@ -94,6 +104,29 @@ impl<U> GRanges<VecRangesIndexed, Vec<U>> {
         range_container.push_range(range);
         Ok(())
     }
+}
+
+impl<'a, T> GRanges<VecRanges<RangeIndexed>, T> 
+where T: IndexedDataContainer<'a>,
+      T: TsvSerialize,
+      <T as IndexedDataContainer<'a>>::Item: TsvSerialize
+{
+    ///
+    pub fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError> {
+        // output stream -- header is None for now (TODO)
+        let output = output.map_or(OutputFile::new_stdout(None), |file| {
+            OutputFile::new(file, None)
+        });
+        let mut writer = output.writer()?;
+
+        let seqnames = self.seqnames();
+        for range in self.iter_ranges() {
+            let record = range.to_record(&seqnames, self.data.as_ref().unwrap());
+            writeln!(writer, "{}", record.to_tsv())?;
+        }
+        Ok(())
+    }
+
 }
 
 impl GRanges<VecRangesEmpty, ()> {

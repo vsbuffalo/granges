@@ -26,10 +26,18 @@ thiserror = "1.0.57"
 # cli = [ "clap" ] // TODO make feature
 dev-commands = [ ]
 
+[profile.release]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1
 
 [[bin]]
 name = "granges"
 path = "src/main/mod.rs"
-# required-features = ["cli"]
+
+[dev-dependencies]
+tempfile = "3.10.0"
+
 
 

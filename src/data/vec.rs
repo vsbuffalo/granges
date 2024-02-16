@@ -1,5 +1,7 @@
 //! Data container implementations for [`Vec<U>`].
 
+use crate::traits::IndexedDataContainer;
+
 
 /// Trait methods for the commonly-used `Vec<U>` data container.
 ///

@@ -7,11 +7,17 @@ pub use indexmap;
 pub mod error;
 pub mod granges;
 pub mod io;
+pub mod data;
 pub mod iterators;
 pub mod join;
 pub mod ranges;
 pub mod test_utilities;
 pub mod traits;
+
+// bringing these CLI modules into lib.rs rather than main/ allows for
+// use in integration tests and other Rust-side command line work
+pub mod commands;
+pub mod reporting;
 
 pub type Position = u32;
 pub type PositionOffset = i32; // signed variant
@@ -24,7 +30,8 @@ pub mod prelude {
 
     pub use crate::ranges::vec::{VecRangesEmpty, VecRangesIndexed};
     pub use crate::traits::{
-        GeneralRangeRecordIterator, RangesIntoIterable, RangesIterable, TsvSerialize,
+        IndexedDataContainer,
+        GeneralRangeRecordIterator, GenericRange, RangesIntoIterable, RangesIterable, TsvSerialize,
     };
 
     pub use crate::seqlens;

@@ -58,8 +58,12 @@ impl GeneralRangeRecordIterator<()> for Bed3RecordIterator {
     }
 }
 
+/// An extensible TSV parser, which uses a supplied parser function to
+/// convert a line into a [`RangeRecord<U>`], a range with generic associated
+/// data.
 pub struct TsvRecordIterator<F, U> {
     reader: BufReader<Box<dyn std::io::Read>>,
+    num_columns: usize,
     parser: F,
     phantom: std::marker::PhantomData<U>,
 }
@@ -68,12 +72,17 @@ impl<F, U> TsvRecordIterator<F, U>
 where
     F: Fn(&str) -> Result<RangeRecord<U>, GRangesError>,
 {
+    /// Create a new [`TsvRecordIterator`], which parses lines from the supplied
+    /// file path into [`RangeRecord<U>`] using the specified parsing function.
     pub fn new(filepath: impl Into<PathBuf>, parser: F) -> Result<Self, GRangesError> {
-        let input_file = InputFile::new(filepath);
+        let mut input_file = InputFile::new(filepath);
+        let _has_metadata = input_file.collect_metadata("#", None);
+        let num_columns = input_file.detect_columns("\t")?;
         let reader = input_file.continue_reading()?;
 
         Ok(Self {
             reader,
+            num_columns,
             parser,
             phantom: std::marker::PhantomData,
         })
@@ -108,11 +117,13 @@ pub struct BedlikeIterator {
 
 impl BedlikeIterator {
     pub fn new(filepath: impl Into<PathBuf>) -> Result<Self, GRangesError> {
-        // Wrap the parse_bedlike_to_range_record function to conform with TsvRecordIterator's expectations.
         let parser: fn(&str) -> Result<RangeRecord<String>, GRangesError> = parse_bed_lazy;
 
         let iter = TsvRecordIterator::new(filepath, parser)?;
         Ok(Self { iter })
+    }
+    pub fn number_columns(&self) -> usize {
+        self.iter.num_columns
     }
 }
 

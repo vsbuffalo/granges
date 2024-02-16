@@ -1,5 +1,5 @@
 use super::{validate_range, RangeEmpty, RangeIndexed};
-use crate::traits::{RangesIntoIterable, RangesIterable};
+use crate::traits::{GenericRange, RangesIntoIterable, RangesIterable};
 use crate::{error::GRangesError, traits::RangeContainer, Position};
 
 pub type VecRangesIndexed = VecRanges<RangeIndexed>;
@@ -38,6 +38,18 @@ impl<R: Clone> VecRanges<R> {
     /// Return whether the [`VecRanges`] object is empty (contains no ranges).
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+impl<R: GenericRange> VecRanges<R> {
+    /// Sort all the ranges.
+    pub fn sort(&mut self) {
+        self.ranges.sort_by(|a, b| {
+            a.start()
+                .cmp(&b.start())
+                .then_with(|| a.end().cmp(&b.end()))
+                .then_with(|| a.index().cmp(&b.index()))
+        });
     }
 }
 

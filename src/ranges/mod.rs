@@ -2,7 +2,11 @@
 //!
 //!
 
-use crate::{error::GRangesError, traits::TsvSerialize, Position};
+use crate::{
+    error::GRangesError,
+    traits::{GenericRange, TsvSerialize, IndexedDataContainer},
+    Position,
+};
 
 pub mod coitrees;
 pub mod operations;
@@ -24,6 +28,24 @@ impl RangeEmpty {
     }
 }
 
+impl GenericRange for RangeEmpty {
+    fn start(&self) -> Position {
+        self.start
+    }
+    fn end(&self) -> Position {
+        self.end
+    }
+    fn index(&self) -> Option<usize> {
+        None
+    }
+    fn set_start(&mut self, start: Position) {
+        self.start = start
+    }
+    fn set_end(&mut self, end: Position) {
+        self.end = end
+    }
+}
+
 /// [`RangeIndexed`] is a range with a valid
 /// index to a data element in the data container.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -40,6 +62,24 @@ impl RangeIndexed {
     /// Create a new 0-indexed right-exclusive range.
     pub fn new(start: Position, end: Position, index: usize) -> Self {
         Self { start, end, index }
+    }
+}
+
+impl GenericRange for RangeIndexed {
+    fn start(&self) -> Position {
+        self.start
+    }
+    fn end(&self) -> Position {
+        self.end
+    }
+    fn index(&self) -> Option<usize> {
+        Some(self.index)
+    }
+    fn set_start(&mut self, start: Position) {
+        self.start = start
+    }
+    fn set_end(&mut self, end: Position) {
+        self.end = end
     }
 }
 
@@ -63,9 +103,52 @@ impl<U> RangeRecord<U> {
     }
 }
 
+impl<U: Clone> GenericRange for RangeRecord<U> {
+    fn start(&self) -> Position {
+        self.start
+    }
+    fn end(&self) -> Position {
+        self.end
+    }
+    fn index(&self) -> Option<usize> {
+        None
+    }
+    fn set_start(&mut self, start: Position) {
+        self.start = start
+    }
+    fn set_end(&mut self, end: Position) {
+        self.end = end
+    }
+}
+
 impl TsvSerialize for RangeRecord<()> {
     fn to_tsv(&self) -> String {
         format!("{}\t{}\t{}", self.seqname, self.start, self.end)
+    }
+}
+
+impl<U: TsvSerialize> TsvSerialize for RangeRecord<Option<U>> {
+    fn to_tsv(&self) -> String {
+        match &self.data {
+            None => {
+                format!(
+                    "{}\t{}\t{}",
+                    self.seqname,
+                    self.start,
+                    self.end,
+                    )
+            }, 
+            Some(data) => {
+                format!(
+                    "{}\t{}\t{}\t{}",
+                    self.seqname,
+                    self.start,
+                    self.end,
+                    data.to_tsv()
+                    )
+
+            }
+        }
     }
 }
 
@@ -77,7 +160,7 @@ impl<U: TsvSerialize> TsvSerialize for RangeRecord<U> {
             self.start,
             self.end,
             self.data.to_tsv()
-        )
+            )
     }
 }
 
@@ -107,6 +190,24 @@ impl RangeEmptyRecord {
     }
 }
 
+impl GenericRange for RangeEmptyRecord {
+    fn start(&self) -> Position {
+        self.start
+    }
+    fn end(&self) -> Position {
+        self.end
+    }
+    fn index(&self) -> Option<usize> {
+        None
+    }
+    fn set_start(&mut self, start: Position) {
+        self.start = start
+    }
+    fn set_end(&mut self, end: Position) {
+        self.end = end
+    }
+}
+
 /// Represents a range entry, with indices to sequence name and data.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RangeIndexedRecord {
@@ -125,6 +226,35 @@ impl RangeIndexedRecord {
             index,
         }
     }
+    pub fn to_record<'a, T>(self, seqnames: &Vec<String>, data: &'a T) 
+        -> RangeRecord<<T as IndexedDataContainer<'a>>::Item> 
+        where T: IndexedDataContainer<'a> + TsvSerialize
+        {
+            RangeRecord {
+                seqname: seqnames[self.seqname_index].clone(),
+                start: self.start,
+                end: self.end,
+                data: data.get_value(self.index),
+            }
+        }
+}
+
+impl GenericRange for RangeIndexedRecord {
+    fn start(&self) -> Position {
+        self.start
+    }
+    fn end(&self) -> Position {
+        self.end
+    }
+    fn index(&self) -> Option<usize> {
+        Some(self.index)
+    }
+    fn set_start(&mut self, start: Position) {
+        self.start = start
+    }
+    fn set_end(&mut self, end: Position) {
+        self.end = end
+    }
 }
 
 /// Validates whether a given range is valid for accessing a sequence of a given `length`.
@@ -141,15 +271,15 @@ pub fn validate_range(
     start: Position,
     end: Position,
     length: Position,
-) -> Result<(), GRangesError> {
+    ) -> Result<(), GRangesError> {
     if start > end {
         return Err(GRangesError::InvalidGenomicRange(start, end));
     }
 
     if end >= length {
         return Err(GRangesError::InvalidGenomicRangeForSequence(
-            start, end, length,
-        ));
+                start, end, length,
+                ));
     }
     Ok(())
 }
@@ -163,9 +293,9 @@ mod tests {
     fn test_invalid_range_start_end() {
         let result = validate_range(5, 1, 10);
         assert!(matches!(
-            result,
-            Err(GRangesError::InvalidGenomicRange(5, 1))
-        ));
+                result,
+                Err(GRangesError::InvalidGenomicRange(5, 1))
+                ));
     }
 
     #[test]
@@ -178,8 +308,8 @@ mod tests {
     fn test_invalid_range_length() {
         let result = validate_range(1, 10, 10);
         assert!(matches!(
-            result,
-            Err(GRangesError::InvalidGenomicRangeForSequence(1, 10, 10))
-        ));
+                result,
+                Err(GRangesError::InvalidGenomicRangeForSequence(1, 10, 10))
+                ));
     }
 }

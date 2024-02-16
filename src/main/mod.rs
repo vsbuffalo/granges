@@ -1,12 +1,10 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use commands::granges_random_bed;
-use granges::{prelude::GRangesError, PositionOffset};
+use granges::{prelude::GRangesError, PositionOffset, commands::{granges_adjust}};
 
-pub mod commands;
-pub mod reporting;
-use crate::commands::granges_adjust;
+#[cfg(feature = "dev-commands")]
+use granges::commands::granges_random_bed;
 
 const INFO: &str = "\
 granges: genomic range operations built off of the GRanges library
@@ -44,6 +42,10 @@ enum Commands {
         /// an optional output file (standard output will be used if not specified)
         #[arg(long)]
         output: Option<PathBuf>,
+        /// sort the ranges after adjusting their start and end positions
+        #[arg(long)]
+        sort: bool,
+
     },
 
     #[cfg(feature = "dev-commands")]
@@ -57,6 +59,9 @@ enum Commands {
         /// an optional output file (standard output will be used if not specified)
         #[arg(long)]
         output: Option<PathBuf>,
+        /// sort the ranges 
+        #[arg(long)]
+        sort: bool,
     },
 }
 
@@ -68,14 +73,17 @@ fn run() -> Result<(), GRangesError> {
             seqlens,
             both,
             output,
-        }) => granges_adjust(bedfile, seqlens, *both, output.as_ref()),
+            sort,
+        }) => granges_adjust(bedfile, seqlens, *both, output.as_ref(), *sort),
         #[cfg(feature = "dev-commands")]
         Some(Commands::RandomBed {
             seqlens,
             num,
             output,
-        }) => granges_random_bed(seqlens, *num, output.as_ref()),
+            sort,
+        }) => granges_random_bed(seqlens, *num, output.as_ref(), *sort),
         None => {
+
             println!("{}\n", INFO);
             std::process::exit(1);
         }

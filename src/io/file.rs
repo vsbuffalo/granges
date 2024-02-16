@@ -93,7 +93,8 @@ impl InputFile {
     }
 
     /// Collects comment lines and/or a line at the start of the file.
-    pub fn collect_metadata(&mut self, comment: &str, header: Option<&str>) -> io::Result<bool> {
+    pub fn collect_metadata(&mut self, comment: &str, header: Option<&str>) 
+        -> io::Result<bool> {
         let mut buf_reader = self.reader()?;
         let mut comments = Vec::new();
         let mut line = String::new();
@@ -120,6 +121,20 @@ impl InputFile {
 
         self.comments = Some(comments);
         Ok(self.skip_lines > 0)
+    }
+
+
+    /// Detect the number of columns *from the first line*, according to some delimiter.
+    /// This is not robust against ragged delimited data formats.
+    pub fn detect_columns(&mut self, delim: &str) -> Result<usize, GRangesError> {
+        let mut skipped_lines = 0;
+        let mut buf_reader = self.reader()?;
+        while skipped_lines < self.skip_lines {
+            skipped_lines += 1;
+        }
+        let mut line = String::new();
+        buf_reader.read_line(&mut line)?;
+        Ok(line.split(delim).count())
     }
 
     /// Method to continue reading after skipping the comment and header lines.
@@ -197,7 +212,7 @@ impl OutputFile {
                     Box::new(BufWriter::new(File::create(path)?))
                 }
             }
-            OutputDestination::Stdout => Box::new(io::stdout()),
+            OutputDestination::Stdout => Box::new(BufWriter::new(io::stdout())),
         };
         // write header if one is set
         if let Some(entries) = &self.header {
