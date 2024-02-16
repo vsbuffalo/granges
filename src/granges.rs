@@ -1,15 +1,19 @@
+use std::path::PathBuf;
+
 use genomap::GenomeMap;
 use indexmap::IndexMap;
 
 use crate::{
+    io::OutputFile,
+    iterators::{GRangesEmptyIterator, GRangesIterator},
     prelude::GRangesError,
     ranges::{
         coitrees::{COITrees, COITreesIndexed},
         vec::{VecRanges, VecRangesEmpty, VecRangesIndexed},
         RangeEmpty, RangeIndexed, RangeRecord,
     },
-    traits::{RangeContainer, RangesIterable},
-    Position, iterators::GRangesIterator,
+    traits::{RangeContainer, RangesIterable, TsvSerialize},
+    Position,
 };
 
 #[derive(Clone, Debug)]
@@ -145,6 +149,27 @@ impl GRanges<VecRangesEmpty, ()> {
     }
 }
 
+impl<R> GRanges<R, ()>
+where
+    R: RangeContainer + RangesIterable<RangeEmpty>,
+{
+    // TODO: candidate for a trait
+    pub fn to_bed3(&self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError> {
+        // output stream -- header is None for now (TODO)
+        let output = output.map_or(OutputFile::new_stdout(None), |file| {
+            OutputFile::new(file, None)
+        });
+        let mut writer = output.writer()?;
+
+        let seqnames = self.seqnames();
+        for range in self.iter_ranges_empty() {
+            let record = range.to_record(&seqnames);
+            writeln!(writer, "{}", record.to_tsv())?;
+        }
+        Ok(())
+    }
+}
+
 impl<T> GRanges<VecRangesIndexed, T> {
     /// Convert this [`VecRangesIndexed`] range container to a cache-oblivious interval tree  
     /// range container, [`COITreesIndexed`]. This is done using the [`coitrees`] library
@@ -163,10 +188,25 @@ impl<T> GRanges<VecRangesIndexed, T> {
     }
 }
 
-impl<R, T> GRanges<R, T> 
-where R: RangesIterable<RangeIndexed> {
+impl<R, T> GRanges<R, T>
+where
+    R: RangesIterable<RangeEmpty>,
+{
+    /// Create a new [`GRangesIterator`] to iterate through all
+    /// the ranges in this [`GRanges`] object. These ranges carry
+    /// no data index, unlike the method [`GRanges.iter_ranges()`]
+    /// available for range type for associated data containers.
+    pub fn iter_ranges_empty(&self) -> GRangesEmptyIterator<'_, R> {
+        GRangesEmptyIterator::new(&self.ranges)
+    }
+}
+
+impl<R, T> GRanges<R, T>
+where
+    R: RangesIterable<RangeIndexed>,
+{
     /// Create a new [`GRangesIterator`] to iterate through all the ranges in this [`GRanges`] object.
-    pub fn iter_ranges<'a>(&'a self) -> GRangesIterator<'a, R> {
+    pub fn iter_ranges(&self) -> GRangesIterator<'_, R> {
         GRangesIterator::new(&self.ranges)
     }
 }

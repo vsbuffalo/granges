@@ -1,4 +1,4 @@
-use std::num::{ParseIntError, ParseFloatError};
+use std::num::{ParseFloatError, ParseIntError};
 
 use genomap::GenomeMapError;
 use thiserror::Error;

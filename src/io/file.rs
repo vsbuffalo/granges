@@ -13,11 +13,13 @@ use std::io::{self, BufWriter};
 use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
 
-use crate::Position;
 use crate::error::GRangesError;
+use crate::Position;
 
 /// Read a tab-delimited *genome file* of sequence (i.e. chromosome) names and their lengths.
-pub fn read_seqlens(filepath: impl Into<PathBuf>) -> Result<IndexMap<String, Position>, GRangesError> {
+pub fn read_seqlens(
+    filepath: impl Into<PathBuf>,
+) -> Result<IndexMap<String, Position>, GRangesError> {
     let input_file = InputFile::new(filepath);
     let reader = input_file.reader()?;
 
@@ -136,12 +138,17 @@ impl InputFile {
     }
 }
 
+enum OutputDestination {
+    File(PathBuf),
+    Stdout,
+}
+
 /// Represents an output file.
 ///
 /// This struct is used to handle operations on an output file, such as writing to the file.
 /// This abstracts writing both plaintext and gzip-compressed files.
 pub struct OutputFile {
-    pub filepath: PathBuf,
+    destination: OutputDestination,
     pub header: Option<Vec<String>>,
 }
 
@@ -155,7 +162,15 @@ impl OutputFile {
     /// * `header` - An optional vector of strings representing commented header lines to be written to the file.
     pub fn new(filepath: impl Into<PathBuf>, header: Option<Vec<String>>) -> Self {
         Self {
-            filepath: filepath.into(),
+            destination: OutputDestination::File(filepath.into()),
+            header,
+        }
+    }
+
+    /// Constructs a new [`OutputFile`] for standard output.
+    pub fn new_stdout(header: Option<Vec<String>>) -> Self {
+        Self {
+            destination: OutputDestination::Stdout,
             header,
         }
     }
@@ -170,15 +185,19 @@ impl OutputFile {
     ///
     /// A result containing a `Box<dyn Write>` on success, or an `io::Error` on failure.
     pub fn writer(&self) -> io::Result<Box<dyn Write>> {
-        let outfile = &self.filepath;
-        let is_gzip = outfile.ends_with(".gz");
-        let mut writer: Box<dyn Write> = if is_gzip {
-            Box::new(BufWriter::new(GzEncoder::new(
-                File::create(outfile)?,
-                Compression::default(),
-            )))
-        } else {
-            Box::new(BufWriter::new(File::create(outfile)?))
+        let mut writer: Box<dyn Write> = match &self.destination {
+            OutputDestination::File(path) => {
+                let is_gzip = path.ends_with(".gz");
+                if is_gzip {
+                    Box::new(BufWriter::new(GzEncoder::new(
+                        File::create(path)?,
+                        Compression::default(),
+                    )))
+                } else {
+                    Box::new(BufWriter::new(File::create(path)?))
+                }
+            }
+            OutputDestination::Stdout => Box::new(io::stdout()),
         };
         // write header if one is set
         if let Some(entries) = &self.header {

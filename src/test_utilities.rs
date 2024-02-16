@@ -3,11 +3,17 @@
 
 use crate::{
     create_granges_with_seqlens,
+    error::GRangesError,
     prelude::{GRanges, VecRangesIndexed},
-    ranges::{coitrees::COITrees, vec::VecRanges, RangeEmpty},
+    ranges::{
+        coitrees::COITrees,
+        vec::{VecRanges, VecRangesEmpty},
+        RangeEmpty,
+    },
     Position,
 };
-use rand::{thread_rng, Rng};
+use indexmap::IndexMap;
+use rand::{seq::SliceRandom, thread_rng, Rng};
 
 // Stochastic test ranges defaults
 //
@@ -57,6 +63,28 @@ pub fn random_vecranges(n: usize) -> VecRanges<RangeEmpty> {
         vr.push_range(range);
     }
     vr
+}
+
+/// Build a random [`GRanges<VecRangesEmpty, ()`] using a set of
+/// sequence lengths.
+pub fn random_granges(
+    seqlens: &IndexMap<String, Position>,
+    num: usize,
+) -> Result<GRanges<VecRangesEmpty, ()>, GRangesError> {
+    let mut rng = thread_rng();
+
+    let mut gr: GRanges<VecRangesEmpty, ()> = GRanges::new_vec(seqlens);
+
+    let seqnames: Vec<String> = seqlens.keys().cloned().collect();
+    for _ in 0..num {
+        let seqname = seqnames.choose(&mut rng).unwrap();
+        let chrom_len = *seqlens
+            .get(seqname)
+            .ok_or_else(|| GRangesError::MissingSequence(seqname.clone()))?;
+        let (start, end) = random_range(chrom_len);
+        gr.push_range_empty(&seqname, start, end)?;
+    }
+    Ok(gr)
 }
 
 /// Build random [`COITrees`] from a random [`VecRanges`].

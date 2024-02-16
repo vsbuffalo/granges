@@ -1,9 +1,9 @@
 //! Input/Output
 //!
 
-pub mod io;
+pub mod file;
 pub mod noodles;
 pub mod parsers;
 
-pub use io::{InputFile, OutputFile};
-pub use parsers::{Bed3RecordIterator, TsvRecordIterator, BedlikeIterator};
+pub use file::{InputFile, OutputFile};
+pub use parsers::{Bed3RecordIterator, BedlikeIterator, TsvRecordIterator};

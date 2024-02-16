@@ -1,6 +1,6 @@
 use coitrees::{BasicCOITree, GenericInterval, Interval, IntervalNode, IntervalTree};
 
-use crate::{error::GRangesError, traits::{RangeContainer}, traits::RangesIterable, Position};
+use crate::{error::GRangesError, traits::RangeContainer, traits::RangesIterable, Position};
 
 use super::{validate_range, vec::VecRanges, RangeEmpty, RangeIndexed};
 
@@ -45,8 +45,8 @@ pub struct COITrees<M: Clone> {
 impl<M: Clone> std::fmt::Debug for COITrees<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("COITrees")
-            .field("number of ranges:", &self.ranges.len()) 
-            .field("length", &self.length) 
+            .field("number of ranges:", &self.ranges.len())
+            .field("length", &self.length)
             .finish()
     }
 }
@@ -60,15 +60,15 @@ impl<M: Clone> COITrees<M> {
     /// Query this range container for a particular range, and call a visit function on all
     /// overlapping ranges.
     pub fn query<F>(&self, start: Position, end: Position, visit: F)
-        where
+    where
         F: FnMut(&IntervalNode<M, usize>),
-        {
-            // Note the terminology change to match coitrees (and uses i32s)
-            let first = start.try_into().expect("could not covert");
-            let end: i32 = end.try_into().expect("could not covert");
-            // internally coitrees uses 0-indexed, right-inclusive "last"
-            self.ranges.query(first, end - 1, visit)
-        }
+    {
+        // Note the terminology change to match coitrees (and uses i32s)
+        let first = start.try_into().expect("could not covert");
+        let end: i32 = end.try_into().expect("could not covert");
+        // internally coitrees uses 0-indexed, right-inclusive "last"
+        self.ranges.query(first, end - 1, visit)
+    }
 
     /// Return the number of ranges in this [`COITreeRangeContainer`] container.
     pub fn len(&self) -> usize {
@@ -139,7 +139,7 @@ impl From<Interval<&usize>> for RangeIndexed {
 impl RangesIterable<RangeIndexed> for COITrees<usize> {
     fn iter_ranges(&self) -> Box<dyn Iterator<Item = RangeIndexed> + '_> {
         let iter = self.ranges.iter();
-        let converted_iter = iter.map(|interval| RangeIndexed::from(interval));
+        let converted_iter = iter.map(RangeIndexed::from);
         Box::new(converted_iter)
     }
 }
@@ -147,7 +147,7 @@ impl RangesIterable<RangeIndexed> for COITrees<usize> {
 impl RangesIterable<RangeEmpty> for COITrees<()> {
     fn iter_ranges(&self) -> Box<dyn Iterator<Item = RangeEmpty> + '_> {
         let iter = self.ranges.iter();
-        let converted_iter = iter.map(|interval| RangeEmpty::from(interval));
+        let converted_iter = iter.map(RangeEmpty::from);
         Box::new(converted_iter)
     }
 }

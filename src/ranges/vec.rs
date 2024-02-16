@@ -62,3 +62,19 @@ impl RangesIterable<RangeIndexed> for VecRanges<RangeIndexed> {
         Box::new(converted_iter)
     }
 }
+
+impl RangesIntoIterable<RangeEmpty> for VecRanges<RangeEmpty> {
+    fn into_iter_ranges(self) -> Box<dyn Iterator<Item = RangeEmpty>> {
+        let iter = self.ranges.into_iter();
+        Box::new(iter)
+    }
+}
+
+impl RangesIterable<RangeEmpty> for VecRanges<RangeEmpty> {
+    fn iter_ranges(&self) -> Box<dyn Iterator<Item = RangeEmpty> + '_> {
+        let iter = self.ranges.iter();
+        // NOTE: RangeIndexed is copyable but there still is overhead here
+        let converted_iter = iter.map(|interval| interval.to_owned());
+        Box::new(converted_iter)
+    }
+}

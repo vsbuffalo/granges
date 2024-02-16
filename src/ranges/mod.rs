@@ -2,11 +2,11 @@
 //!
 //!
 
-use crate::{error::GRangesError, Position};
+use crate::{error::GRangesError, traits::TsvSerialize, Position};
 
 pub mod coitrees;
-pub mod vec;
 pub mod operations;
+pub mod vec;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RangeEmpty {
@@ -52,7 +52,62 @@ pub struct RangeRecord<U> {
     pub data: U,
 }
 
-/// Represents a range entry, possible with indices to sequence name and data.
+impl<U> RangeRecord<U> {
+    pub fn new(seqname: String, start: Position, end: Position, data: U) -> Self {
+        Self {
+            seqname,
+            start,
+            end,
+            data,
+        }
+    }
+}
+
+impl TsvSerialize for RangeRecord<()> {
+    fn to_tsv(&self) -> String {
+        format!("{}\t{}\t{}", self.seqname, self.start, self.end)
+    }
+}
+
+impl<U: TsvSerialize> TsvSerialize for RangeRecord<U> {
+    fn to_tsv(&self) -> String {
+        format!(
+            "{}\t{}\t{}\t{}",
+            self.seqname,
+            self.start,
+            self.end,
+            self.data.to_tsv()
+        )
+    }
+}
+
+/// Represents a range entry without data.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RangeEmptyRecord {
+    pub seqname_index: usize,
+    pub start: Position,
+    pub end: Position,
+}
+
+impl RangeEmptyRecord {
+    pub fn new(seqname_index: usize, start: Position, end: Position) -> Self {
+        Self {
+            seqname_index,
+            start,
+            end,
+        }
+    }
+    pub fn to_record(self, seqnames: &Vec<String>) -> RangeRecord<()> {
+        RangeRecord {
+            seqname: seqnames[self.seqname_index].clone(),
+            start: self.start,
+            end: self.end,
+            data: (),
+        }
+    }
+}
+
+/// Represents a range entry, with indices to sequence name and data.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RangeIndexedRecord {
     pub seqname_index: usize,

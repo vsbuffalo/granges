@@ -2,13 +2,18 @@
 //!
 //! - [`adjust()`]: Adjust range start and end positions.
 
-use crate::{PositionOffset, Position};
+use crate::{Position, PositionOffset};
 
-use super::RangeIndexed;
+use super::{RangeEmpty, RangeIndexed, RangeRecord};
 
 /// Adjusts the coordinates of a range, ensuring the adjusted range is within [0, length]
 /// and returning `None` if the range has zero width after adjustment.
-pub fn adjust(range: RangeIndexed, start_delta: PositionOffset, end_delta: PositionOffset, length: Position) -> Option<RangeIndexed> {
+pub fn adjust_range_record<U>(
+    range: RangeRecord<U>,
+    start_delta: PositionOffset,
+    end_delta: PositionOffset,
+    length: Position,
+) -> Option<RangeRecord<U>> {
     let start: PositionOffset = range.start.try_into().unwrap();
     let end: PositionOffset = range.end.try_into().unwrap();
     let length: PositionOffset = length.try_into().unwrap();
@@ -16,14 +21,78 @@ pub fn adjust(range: RangeIndexed, start_delta: PositionOffset, end_delta: Posit
     // ensure within [0, length]
     let new_start = (start + start_delta).max(0).min(length);
     // ensure new_end >= new_start and within [0, length]
-    let new_end = (end + end_delta).max(new_start).min(length); 
+    let new_end = (end + end_delta).max(new_start).min(length);
 
     // check for zero-width range
     if new_end <= new_start {
         // return None if the range has zero width
         None
     } else {
-        Some(RangeIndexed::new(new_start.try_into().unwrap(), new_end.try_into().unwrap(), range.index))
+        Some(RangeRecord::new(
+            range.seqname,
+            new_start.try_into().unwrap(),
+            new_end.try_into().unwrap(),
+            range.data,
+        ))
+    }
+}
+
+/// Adjusts the coordinates of a range, ensuring the adjusted range is within [0, length]
+/// and returning `None` if the range has zero width after adjustment.
+pub fn adjust_empty(
+    range: RangeEmpty,
+    start_delta: PositionOffset,
+    end_delta: PositionOffset,
+    length: Position,
+) -> Option<RangeEmpty> {
+    let start: PositionOffset = range.start.try_into().unwrap();
+    let end: PositionOffset = range.end.try_into().unwrap();
+    let length: PositionOffset = length.try_into().unwrap();
+
+    // ensure within [0, length]
+    let new_start = (start + start_delta).max(0).min(length);
+    // ensure new_end >= new_start and within [0, length]
+    let new_end = (end + end_delta).max(new_start).min(length);
+
+    // check for zero-width range
+    if new_end <= new_start {
+        // return None if the range has zero width
+        None
+    } else {
+        Some(RangeEmpty::new(
+            new_start.try_into().unwrap(),
+            new_end.try_into().unwrap(),
+        ))
+    }
+}
+
+/// Adjusts the coordinates of a range, ensuring the adjusted range is within [0, length]
+/// and returning `None` if the range has zero width after adjustment.
+pub fn adjust(
+    range: RangeIndexed,
+    start_delta: PositionOffset,
+    end_delta: PositionOffset,
+    length: Position,
+) -> Option<RangeIndexed> {
+    let start: PositionOffset = range.start.try_into().unwrap();
+    let end: PositionOffset = range.end.try_into().unwrap();
+    let length: PositionOffset = length.try_into().unwrap();
+
+    // ensure within [0, length]
+    let new_start = (start + start_delta).max(0).min(length);
+    // ensure new_end >= new_start and within [0, length]
+    let new_end = (end + end_delta).max(new_start).min(length);
+
+    // check for zero-width range
+    if new_end <= new_start {
+        // return None if the range has zero width
+        None
+    } else {
+        Some(RangeIndexed::new(
+            new_start.try_into().unwrap(),
+            new_end.try_into().unwrap(),
+            range.index,
+        ))
     }
 }
 
@@ -44,11 +113,10 @@ mod tests {
         let adjusted = adjust(range, -5, 20, 15).unwrap();
         assert_eq!(adjusted, RangeIndexed::new(5, 15, 2));
     }
-    
+
     #[test]
     fn test_zero_width_result() {
         let range = RangeIndexed::new(5, 10, 3);
         assert!(adjust(range, 5, -5, 15).is_none());
     }
 }
-

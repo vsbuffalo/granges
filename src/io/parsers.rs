@@ -6,11 +6,11 @@ use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
 
-use crate::Position;
 use crate::error::GRangesError;
-use crate::io::io::InputFile;
+use crate::io::file::InputFile;
 use crate::ranges::RangeRecord;
 use crate::traits::GeneralRangeRecordIterator;
+use crate::Position;
 
 use super::noodles::convert_noodles_position;
 
@@ -101,6 +101,7 @@ where
 
 /// A BED-like file parser. This works by lazy-parsing the first three
 /// columns, which are standard to all BED files.
+#[allow(clippy::type_complexity)]
 pub struct BedlikeIterator {
     iter: TsvRecordIterator<fn(&str) -> Result<RangeRecord<String>, GRangesError>, String>,
 }
@@ -109,7 +110,7 @@ impl BedlikeIterator {
     pub fn new(filepath: impl Into<PathBuf>) -> Result<Self, GRangesError> {
         // Wrap the parse_bedlike_to_range_record function to conform with TsvRecordIterator's expectations.
         let parser: fn(&str) -> Result<RangeRecord<String>, GRangesError> = parse_bed_lazy;
-        
+
         let iter = TsvRecordIterator::new(filepath, parser)?;
         Ok(Self { iter })
     }
@@ -122,8 +123,6 @@ impl Iterator for BedlikeIterator {
         self.iter.next()
     }
 }
-
-
 
 /// An iterator over [`IntervalRecord`] items that filters based on sequence name.
 ///
@@ -282,7 +281,11 @@ pub fn parse_bed_lazy(line: &str) -> Result<RangeRecord<String>, GRangesError> {
     let start: Position = parse_column(columns[1], line)?;
     let end: Position = parse_column(columns[2], line)?;
 
-    let data = columns[3].to_string();
+    let data = if columns.len() > 3 {
+        columns[3].to_string()
+    } else {
+        String::new()
+    };
 
     Ok(RangeRecord {
         seqname,
@@ -312,7 +315,7 @@ mod tests {
         // let first_interval = gr_iter.next().unwrap();
         // assert_eq!(first_interval.first, 7);
         // assert_eq!(first_interval.last, 12);
-        // 
+        //
         // let second_interval = gr_iter.next().unwrap();
         // assert_eq!(second_interval.first, 20);
         // assert_eq!(second_interval.last, 33);
@@ -336,9 +339,6 @@ mod tests {
         // note: the Rust LSP thinks this isn't used for some reason, so prefaced with _
         // to silence warnings.
         let _msg = "column '-1' in 'chr1\t-1\t20'".to_string();
-        assert!(matches!(
-                result,
-                Err(GRangesError::InvalidColumnType(_msg))
-                ));
+        assert!(matches!(result, Err(GRangesError::InvalidColumnType(_msg))));
     }
 }

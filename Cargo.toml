@@ -22,8 +22,10 @@ noodles = { version = "0.63.0", features = ["core", "bed"] }
 rand = "0.8.5"
 thiserror = "1.0.57"
 
-# [features]
-# cli = [ "clap" ]
+[features]
+# cli = [ "clap" ] // TODO make feature
+dev-commands = [ ]
+
 
 [[bin]]
 name = "granges"

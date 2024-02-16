@@ -3,9 +3,8 @@
 
 use crate::{error::GRangesError, io::parsers::FilteredIntervals, ranges::RangeRecord};
 
-
 /// Defines functionality common to all range containers, e.g. [`VecRanges<R>`] and
-/// [`COITrees`]. 
+/// [`COITrees`].
 pub trait RangeContainer {
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
@@ -81,4 +80,25 @@ pub trait IndexedDataContainer<'a> {
 
     /// Create a new data container using a set of range indices.
     fn new_from_indices(&self, indices: &[usize]) -> Self::Output;
+}
+
+/// Defines how to serialize something to TSV.
+pub trait TsvSerialize {
+    // Serialize something to a TSV [`String`].
+    fn to_tsv(&self) -> String;
+}
+
+impl TsvSerialize for String {
+    fn to_tsv(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl<U: TsvSerialize> TsvSerialize for Vec<U> {
+    fn to_tsv(&self) -> String {
+        self.iter()
+            .map(|x| x.to_tsv())
+            .collect::<Vec<_>>()
+            .join("\t")
+    }
 }
