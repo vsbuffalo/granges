@@ -93,8 +93,7 @@ impl InputFile {
     }
 
     /// Collects comment lines and/or a line at the start of the file.
-    pub fn collect_metadata(&mut self, comment: &str, header: Option<&str>) 
-        -> io::Result<bool> {
+    pub fn collect_metadata(&mut self, comment: &str, header: Option<&str>) -> io::Result<bool> {
         let mut buf_reader = self.reader()?;
         let mut comments = Vec::new();
         let mut line = String::new();
@@ -122,7 +121,6 @@ impl InputFile {
         self.comments = Some(comments);
         Ok(self.skip_lines > 0)
     }
-
 
     /// Detect the number of columns *from the first line*, according to some delimiter.
     /// This is not robust against ragged delimited data formats.

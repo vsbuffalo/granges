@@ -1,6 +1,8 @@
 //! Test cases and test utility functions.
 //!
 
+use std::path::PathBuf;
+
 use crate::{
     create_granges_with_seqlens,
     error::GRangesError,
@@ -14,6 +16,20 @@ use crate::{
 };
 use indexmap::IndexMap;
 use rand::{seq::SliceRandom, thread_rng, Rng};
+
+/// Get the path to the `grange` command line tool after a build.
+/// This is used for integration tests and benchmarks.
+pub fn granges_binary_path() -> PathBuf {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("target");
+    path.push(if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    });
+    path.push("granges");
+    path
+}
 
 // Stochastic test ranges defaults
 //
@@ -82,7 +98,7 @@ pub fn random_granges(
             .get(seqname)
             .ok_or_else(|| GRangesError::MissingSequence(seqname.clone()))?;
         let (start, end) = random_range(chrom_len);
-        gr.push_range_empty(&seqname, start, end)?;
+        gr.push_range_empty(seqname, start, end)?;
     }
     Ok(gr)
 }

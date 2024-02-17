@@ -1,7 +1,13 @@
 use std::path::PathBuf;
 
-use crate::{prelude::*, PositionOffset, reporting::{CommandOutput, Report}, io::OutputFile, ranges::operations::adjust_range, test_utilities::random_granges};
-
+use crate::{
+    io::OutputFile,
+    prelude::*,
+    ranges::operations::adjust_range,
+    reporting::{CommandOutput, Report},
+    test_utilities::random_granges,
+    PositionOffset,
+};
 
 /// Adjust the genomic ranges in a bedfile by some specified amount.
 // NOTE: we don't do build the full GRanges objects here, for efficiency.
@@ -57,8 +63,17 @@ pub fn granges_adjust(
                 // we need to sort, so we build up the appropriate type of GRanges
                 // object, depending on if we need to hold data or not.
                 match gr {
-                    GRangesVariant::Empty(ref mut obj) => obj.push_range_empty(&range_adjusted.seqname, range_adjusted.start, range_adjusted.end)?,
-                    GRangesVariant::Indexed(ref mut obj) => obj.push_range_with_data(&range_adjusted.seqname, range_adjusted.start, range_adjusted.end, range_adjusted.data)?,
+                    GRangesVariant::Empty(ref mut obj) => obj.push_range_empty(
+                        &range_adjusted.seqname,
+                        range_adjusted.start,
+                        range_adjusted.end,
+                    )?,
+                    GRangesVariant::Indexed(ref mut obj) => obj.push_range_with_data(
+                        &range_adjusted.seqname,
+                        range_adjusted.start,
+                        range_adjusted.end,
+                        range_adjusted.data,
+                    )?,
                 }
             }
         } else {
@@ -79,7 +94,6 @@ pub fn granges_adjust(
             GRangesVariant::Empty(obj) => obj.sort().to_bed3(output)?,
             GRangesVariant::Indexed(obj) => obj.sort().to_tsv(output)?,
         }
-
     }
     Ok(CommandOutput::new((), report))
 }
@@ -90,7 +104,7 @@ pub fn granges_random_bed(
     num: u32,
     output: Option<impl Into<PathBuf>>,
     sort: bool,
-    ) -> Result<CommandOutput<()>, GRangesError> {
+) -> Result<CommandOutput<()>, GRangesError> {
     // get the genome info
     let genome = read_seqlens(seqlens)?;
 

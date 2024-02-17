@@ -2,7 +2,6 @@
 
 use crate::traits::IndexedDataContainer;
 
-
 /// Trait methods for the commonly-used `Vec<U>` data container.
 ///
 /// Note that the associated `Item` type is always a *reference* to the data elements.
@@ -29,7 +28,3 @@ where
         Vec::from_iter(indices.iter().map(|&idx| (*self.get_value(idx)).clone()))
     }
 }
-
-
-
-

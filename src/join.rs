@@ -1,3 +1,5 @@
+#![allow(clippy::all)]
+
 use std::rc::Rc;
 
 use crate::Position;

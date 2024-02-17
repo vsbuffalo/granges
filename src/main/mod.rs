@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use granges::{prelude::GRangesError, PositionOffset, commands::{granges_adjust}};
+use granges::{commands::granges_adjust, prelude::GRangesError, PositionOffset};
 
 #[cfg(feature = "dev-commands")]
 use granges::commands::granges_random_bed;
@@ -45,7 +45,6 @@ enum Commands {
         /// sort the ranges after adjusting their start and end positions
         #[arg(long)]
         sort: bool,
-
     },
 
     #[cfg(feature = "dev-commands")]
@@ -59,7 +58,7 @@ enum Commands {
         /// an optional output file (standard output will be used if not specified)
         #[arg(long)]
         output: Option<PathBuf>,
-        /// sort the ranges 
+        /// sort the ranges
         #[arg(long)]
         sort: bool,
     },
@@ -83,7 +82,6 @@ fn run() -> Result<(), GRangesError> {
             sort,
         }) => granges_random_bed(seqlens, *num, output.as_ref(), *sort),
         None => {
-
             println!("{}\n", INFO);
             std::process::exit(1);
         }

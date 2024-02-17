@@ -34,8 +34,8 @@ pub fn adjust_range<R: GenericRange>(
 
 #[cfg(test)]
 mod tests {
-    use crate::ranges::RangeIndexed;
     use super::*;
+    use crate::ranges::RangeIndexed;
 
     #[test]
     fn test_normal_adjustment() {

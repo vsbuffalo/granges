@@ -1,6 +1,7 @@
 //! Centralized reporting to the user about e.g. fragile operations.
 //!
 
+#[allow(unused)]
 pub struct CommandOutput<U> {
     value: U,
     report: Report,

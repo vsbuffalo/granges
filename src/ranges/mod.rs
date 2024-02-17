@@ -4,7 +4,7 @@
 
 use crate::{
     error::GRangesError,
-    traits::{GenericRange, TsvSerialize, IndexedDataContainer},
+    traits::{GenericRange, IndexedDataContainer, TsvSerialize},
     Position,
 };
 
@@ -131,13 +131,8 @@ impl<U: TsvSerialize> TsvSerialize for RangeRecord<Option<U>> {
     fn to_tsv(&self) -> String {
         match &self.data {
             None => {
-                format!(
-                    "{}\t{}\t{}",
-                    self.seqname,
-                    self.start,
-                    self.end,
-                    )
-            }, 
+                format!("{}\t{}\t{}", self.seqname, self.start, self.end,)
+            }
             Some(data) => {
                 format!(
                     "{}\t{}\t{}\t{}",
@@ -145,8 +140,7 @@ impl<U: TsvSerialize> TsvSerialize for RangeRecord<Option<U>> {
                     self.start,
                     self.end,
                     data.to_tsv()
-                    )
-
+                )
             }
         }
     }
@@ -160,7 +154,7 @@ impl<U: TsvSerialize> TsvSerialize for RangeRecord<U> {
             self.start,
             self.end,
             self.data.to_tsv()
-            )
+        )
     }
 }
 
@@ -180,7 +174,7 @@ impl RangeEmptyRecord {
             end,
         }
     }
-    pub fn to_record(self, seqnames: &Vec<String>) -> RangeRecord<()> {
+    pub fn to_record(self, seqnames: &[String]) -> RangeRecord<()> {
         RangeRecord {
             seqname: seqnames[self.seqname_index].clone(),
             start: self.start,
@@ -226,17 +220,21 @@ impl RangeIndexedRecord {
             index,
         }
     }
-    pub fn to_record<'a, T>(self, seqnames: &Vec<String>, data: &'a T) 
-        -> RangeRecord<<T as IndexedDataContainer<'a>>::Item> 
-        where T: IndexedDataContainer<'a> + TsvSerialize
-        {
-            RangeRecord {
-                seqname: seqnames[self.seqname_index].clone(),
-                start: self.start,
-                end: self.end,
-                data: data.get_value(self.index),
-            }
+    pub fn to_record<'a, T>(
+        self,
+        seqnames: &[String],
+        data: &'a T,
+    ) -> RangeRecord<<T as IndexedDataContainer<'a>>::Item>
+    where
+        T: IndexedDataContainer<'a> + TsvSerialize,
+    {
+        RangeRecord {
+            seqname: seqnames[self.seqname_index].clone(),
+            start: self.start,
+            end: self.end,
+            data: data.get_value(self.index),
         }
+    }
 }
 
 impl GenericRange for RangeIndexedRecord {
@@ -271,15 +269,15 @@ pub fn validate_range(
     start: Position,
     end: Position,
     length: Position,
-    ) -> Result<(), GRangesError> {
+) -> Result<(), GRangesError> {
     if start > end {
         return Err(GRangesError::InvalidGenomicRange(start, end));
     }
 
     if end >= length {
         return Err(GRangesError::InvalidGenomicRangeForSequence(
-                start, end, length,
-                ));
+            start, end, length,
+        ));
     }
     Ok(())
 }
@@ -293,9 +291,9 @@ mod tests {
     fn test_invalid_range_start_end() {
         let result = validate_range(5, 1, 10);
         assert!(matches!(
-                result,
-                Err(GRangesError::InvalidGenomicRange(5, 1))
-                ));
+            result,
+            Err(GRangesError::InvalidGenomicRange(5, 1))
+        ));
     }
 
     #[test]
@@ -308,8 +306,8 @@ mod tests {
     fn test_invalid_range_length() {
         let result = validate_range(1, 10, 10);
         assert!(matches!(
-                result,
-                Err(GRangesError::InvalidGenomicRangeForSequence(1, 10, 10))
-                ));
+            result,
+            Err(GRangesError::InvalidGenomicRangeForSequence(1, 10, 10))
+        ));
     }
 }

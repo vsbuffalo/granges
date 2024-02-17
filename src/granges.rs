@@ -12,7 +12,7 @@ use crate::{
         vec::{VecRanges, VecRangesEmpty, VecRangesIndexed},
         RangeEmpty, RangeIndexed, RangeRecord,
     },
-    traits::{RangeContainer, RangesIterable, TsvSerialize, GenericRange, IndexedDataContainer},
+    traits::{GenericRange, IndexedDataContainer, RangeContainer, RangesIterable, TsvSerialize},
     Position,
 };
 
@@ -71,11 +71,7 @@ impl<R: GenericRange, T> GRanges<VecRanges<R>, T> {
 
     /// Consume this [`GRanges`] object and sort the ranges.
     pub fn sort(mut self) -> Self {
-        self.ranges
-            .values_mut()
-            .for_each(|ranges| {
-                ranges.sort()
-            });
+        self.ranges.values_mut().for_each(|ranges| ranges.sort());
         self
     }
 }
@@ -106,10 +102,11 @@ impl<U> GRanges<VecRangesIndexed, Vec<U>> {
     }
 }
 
-impl<'a, T> GRanges<VecRanges<RangeIndexed>, T> 
-where T: IndexedDataContainer<'a>,
-      T: TsvSerialize,
-      <T as IndexedDataContainer<'a>>::Item: TsvSerialize
+impl<'a, T> GRanges<VecRanges<RangeIndexed>, T>
+where
+    T: IndexedDataContainer<'a>,
+    T: TsvSerialize,
+    <T as IndexedDataContainer<'a>>::Item: TsvSerialize,
 {
     ///
     pub fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError> {
@@ -126,7 +123,6 @@ where T: IndexedDataContainer<'a>,
         }
         Ok(())
     }
-
 }
 
 impl GRanges<VecRangesEmpty, ()> {

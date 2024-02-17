@@ -4,10 +4,10 @@
 
 pub use indexmap;
 
+pub mod data;
 pub mod error;
 pub mod granges;
 pub mod io;
-pub mod data;
 pub mod iterators;
 pub mod join;
 pub mod ranges;
@@ -30,8 +30,8 @@ pub mod prelude {
 
     pub use crate::ranges::vec::{VecRangesEmpty, VecRangesIndexed};
     pub use crate::traits::{
-        IndexedDataContainer,
-        GeneralRangeRecordIterator, GenericRange, RangesIntoIterable, RangesIterable, TsvSerialize,
+        GeneralRangeRecordIterator, GenericRange, IndexedDataContainer, RangesIntoIterable,
+        RangesIterable, TsvSerialize,
     };
 
     pub use crate::seqlens;
