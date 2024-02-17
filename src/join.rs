@@ -1,10 +1,8 @@
 #![allow(clippy::all)]
 
-use std::rc::Rc;
+use crate::{Position, granges::GRanges, iterators::GRangesIterator, traits::RangesIterable};
 
-use crate::Position;
-
-pub struct JoinData<DL, DR> {
+pub struct JoinData {
     /// The data index for the left range.
     left: usize,
 
@@ -20,26 +18,35 @@ pub struct JoinData<DL, DR> {
     /// The lengths of the overlaps between the left and right ranges.
     overlaps: Vec<Position>,
 
-    // TODO: we may want some simple summary of whether something is
+    // TODO: we may want some simple summary of whether an overlapping range is
     // up or downstream. I think the cleanest summary is a signed integer
     // representing the side and degree of non-overlap. E.g. a range
     // that overlaps another but overhangs the 3' side of the focal left
     // range by 10bp is +10; if it were 5', it would be -10.
-    /// A possible reference to the left data of type `T`.
-    left_data: Option<Rc<DL>>,
-
-    /// A possible reference to the right data of type `T`.
-    right_data: Option<Rc<DR>>,
 }
 
-pub struct JoinIterator<DL, DR> {
-    left_data: Option<Rc<DL>>,
-    right_data: Option<Rc<DR>>,
+pub struct JoinIterator<'a, C, DL, DR> 
+where C: RangesIterable {
+    left_iter: GRangesIterator<'a, C>,
+    left_data: Option<DL>,
+    right_data: Option<DR>,
 }
-//
-// impl<DL, DR> JoinIterator<DL, DR> {
-//
-// }
+
+impl<'a, C, DL, DR> JoinIterator<'a, C, DL, DR>
+where C: RangesIterable {
+    pub fn new<CL, CR>(left: GRanges<CL, DL>, right: &'a GRanges<CL, DR>) {
+    }
+}
+
+impl<'a, C, DL, DR> Iterator for JoinIterator<'a, C, DL, DR> 
+where C: RangesIterable {
+    type Item = JoinData;
+    fn next(&mut self) -> Option<Self::Item> {
+        todo!()
+    }
+}
+
+
 //
 //
 // pub fn left_join<CL, CR, DL, DR>(left: GRanges<CL, DL>, right: GRanges<CR, DR>) -> JoinIterator<DL, DR> {

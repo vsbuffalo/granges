@@ -9,13 +9,15 @@ use granges::{commands::granges_random_bed, test_utilities::granges_binary_path}
 use std::process::Command;
 use tempfile::NamedTempFile;
 
+const BED_LENGTH: u32 = 10_000;
+
 /// Create a random BED3 file based on the hg38 sequence lengths, and write to disk.
 pub fn random_bedfile() -> NamedTempFile {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let random_bedfile_path = temp_file.path().to_path_buf();
     granges_random_bed(
         "tests_data/hg38_seqlens.tsv",
-        100_000,
+        BED_LENGTH,
         Some(&random_bedfile_path),
         true,
     )

@@ -207,14 +207,14 @@ impl GenericRange for GenomicRangeEmptyRecord {
 
 /// Represents a range entry, with indices to sequence name and data.
 #[derive(Debug, Clone, PartialEq)]
-pub struct RangeIndexedRecord {
+pub struct GenomicRangeIndexedRecord {
     pub seqname_index: usize,
     pub start: Position,
     pub end: Position,
     pub index: Option<usize>,
 }
 
-impl RangeIndexedRecord {
+impl GenomicRangeIndexedRecord {
     pub fn new(seqname_index: usize, start: Position, end: Position, index: Option<usize>) -> Self {
         Self {
             seqname_index,
@@ -250,7 +250,7 @@ impl RangeIndexedRecord {
     }
 }
 
-impl GenericRange for RangeIndexedRecord {
+impl GenericRange for GenomicRangeIndexedRecord {
     fn start(&self) -> Position {
         self.start
     }

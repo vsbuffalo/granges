@@ -1,7 +1,7 @@
 use genomap::GenomeMap;
 
 use crate::{
-    ranges::RangeIndexedRecord,
+    ranges::GenomicRangeIndexedRecord,
     traits::{GenericRange, RangeContainer, RangesIterable},
 };
 
@@ -39,12 +39,14 @@ where
     R: RangeContainer + RangesIterable,
     <R as RangesIterable>::RangeType: GenericRange,
 {
-    type Item = RangeIndexedRecord;
+    // no matter what the input type is, we can always
+    // turn it into this general type.
+    type Item = GenomicRangeIndexedRecord;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(next_range) = self.current_range_iter.next() {
-                return Some(RangeIndexedRecord {
+                return Some(GenomicRangeIndexedRecord {
                     seqname_index: self.current_seqname_index,
                     start: next_range.start(),
                     end: next_range.end(),
@@ -69,7 +71,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{ranges::RangeIndexedRecord, test_utilities::granges_test_case_01};
+    use crate::{ranges::GenomicRangeIndexedRecord, test_utilities::granges_test_case_01};
 
     use super::GRangesIterator;
 
@@ -79,7 +81,7 @@ mod tests {
         let mut iter = GRangesIterator::new(&gr.ranges);
         assert_eq!(
             iter.next().unwrap(),
-            RangeIndexedRecord::new(0, 0, 5, Some(0))
+            GenomicRangeIndexedRecord::new(0, 0, 5, Some(0))
         );
     }
 }
