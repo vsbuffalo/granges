@@ -1,7 +1,9 @@
 //! Traits used by the GRanges library.
 //!
 
-use crate::{error::GRangesError, io::parsers::FilteredIntervals, ranges::RangeRecord, Position};
+use crate::{
+    error::GRangesError, io::parsers::FilteredIntervals, ranges::GenomicRangeRecord, Position,
+};
 
 ///
 pub trait GenericRange: Clone {
@@ -26,7 +28,7 @@ pub trait RangeContainer {
 /// so these trait methods simplify excluding or retaining ranges based on what
 /// sequence (i.e. chromosome) they are on.
 pub trait GeneralRangeRecordIterator<U>:
-    Iterator<Item = Result<RangeRecord<U>, GRangesError>> + Sized
+    Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>> + Sized
 {
     fn retain_seqnames(self, seqnames: Vec<String>) -> FilteredIntervals<Self, U>;
     fn exclude_seqnames(self, seqnames: Vec<String>) -> FilteredIntervals<Self, U>;
@@ -34,8 +36,9 @@ pub trait GeneralRangeRecordIterator<U>:
 
 /// The [`RangesIterable`] trait defines common functionality for iterating over
 /// the range types in range containers.
-pub trait RangesIterable<R> {
-    fn iter_ranges(&self) -> Box<dyn Iterator<Item = R> + '_>;
+pub trait RangesIterable {
+    type RangeType: GenericRange;
+    fn iter_ranges(&self) -> Box<dyn Iterator<Item = Self::RangeType> + '_>;
 }
 
 /// The [`RangesIntoIterable`] trait defines common functionality for *consuming* iterating

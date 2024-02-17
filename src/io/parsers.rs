@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use crate::error::GRangesError;
 use crate::io::file::InputFile;
-use crate::ranges::RangeRecord;
+use crate::ranges::GenomicRangeRecord;
 use crate::traits::GeneralRangeRecordIterator;
 use crate::Position;
 
@@ -33,12 +33,12 @@ impl Bed3RecordIterator {
 }
 
 impl Iterator for Bed3RecordIterator {
-    type Item = Result<RangeRecord<()>, GRangesError>;
+    type Item = Result<GenomicRangeRecord<()>, GRangesError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.bed_reader.records::<3>().next().map(|res| {
             res.map_err(GRangesError::IOError)
-                .map(|record| RangeRecord {
+                .map(|record| GenomicRangeRecord {
                     seqname: record.reference_sequence_name().to_string(),
                     start: convert_noodles_position(record.start_position()),
                     end: convert_noodles_position(record.end_position()),
@@ -70,7 +70,7 @@ pub struct TsvRecordIterator<F, U> {
 
 impl<F, U> TsvRecordIterator<F, U>
 where
-    F: Fn(&str) -> Result<RangeRecord<U>, GRangesError>,
+    F: Fn(&str) -> Result<GenomicRangeRecord<U>, GRangesError>,
 {
     /// Create a new [`TsvRecordIterator`], which parses lines from the supplied
     /// file path into [`RangeRecord<U>`] using the specified parsing function.
@@ -91,9 +91,9 @@ where
 
 impl<F, U> Iterator for TsvRecordIterator<F, U>
 where
-    F: Fn(&str) -> Result<RangeRecord<U>, GRangesError>,
+    F: Fn(&str) -> Result<GenomicRangeRecord<U>, GRangesError>,
 {
-    type Item = Result<RangeRecord<U>, GRangesError>;
+    type Item = Result<GenomicRangeRecord<U>, GRangesError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut line = String::new();
@@ -112,12 +112,12 @@ where
 /// columns, which are standard to all BED files.
 #[allow(clippy::type_complexity)]
 pub struct BedlikeIterator {
-    iter: TsvRecordIterator<fn(&str) -> Result<RangeRecord<String>, GRangesError>, String>,
+    iter: TsvRecordIterator<fn(&str) -> Result<GenomicRangeRecord<String>, GRangesError>, String>,
 }
 
 impl BedlikeIterator {
     pub fn new(filepath: impl Into<PathBuf>) -> Result<Self, GRangesError> {
-        let parser: fn(&str) -> Result<RangeRecord<String>, GRangesError> = parse_bed_lazy;
+        let parser: fn(&str) -> Result<GenomicRangeRecord<String>, GRangesError> = parse_bed_lazy;
 
         let iter = TsvRecordIterator::new(filepath, parser)?;
         Ok(Self { iter })
@@ -128,7 +128,7 @@ impl BedlikeIterator {
 }
 
 impl Iterator for BedlikeIterator {
-    type Item = Result<RangeRecord<String>, GRangesError>;
+    type Item = Result<GenomicRangeRecord<String>, GRangesError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next()
@@ -164,7 +164,7 @@ impl Iterator for BedlikeIterator {
 /// ```
 pub struct FilteredIntervals<I, U>
 where
-    I: Iterator<Item = Result<RangeRecord<U>, GRangesError>>,
+    I: Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>>,
 {
     inner: I,
     retain_seqnames: Option<HashSet<String>>,
@@ -173,7 +173,7 @@ where
 
 impl<I, U> FilteredIntervals<I, U>
 where
-    I: Iterator<Item = Result<RangeRecord<U>, GRangesError>>,
+    I: Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>>,
 {
     pub fn new(
         inner: I,
@@ -192,9 +192,9 @@ where
 
 impl<I, U> Iterator for FilteredIntervals<I, U>
 where
-    I: Iterator<Item = Result<RangeRecord<U>, GRangesError>>,
+    I: Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>>,
 {
-    type Item = Result<RangeRecord<U>, GRangesError>;
+    type Item = Result<GenomicRangeRecord<U>, GRangesError>;
 
     /// Get the next filtered entry, prioritizing exclude over retain.
     fn next(&mut self) -> Option<Self::Item> {
@@ -282,7 +282,7 @@ pub fn parse_bedlike(line: &str) -> Result<(String, Position, Position, Vec<&str
 
 /// Lazily parses a BED* format line into the first three columns defining the range,
 /// storing the rest as a `String`.
-pub fn parse_bed_lazy(line: &str) -> Result<RangeRecord<String>, GRangesError> {
+pub fn parse_bed_lazy(line: &str) -> Result<GenomicRangeRecord<String>, GRangesError> {
     let columns: Vec<&str> = line.splitn(4, '\t').collect();
     if columns.len() < 3 {
         return Err(GRangesError::BedlikeTooFewColumns(line.to_string()));
@@ -298,7 +298,7 @@ pub fn parse_bed_lazy(line: &str) -> Result<RangeRecord<String>, GRangesError> {
         String::new()
     };
 
-    Ok(RangeRecord {
+    Ok(GenomicRangeRecord {
         seqname,
         start,
         end,

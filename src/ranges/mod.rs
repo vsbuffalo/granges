@@ -83,16 +83,19 @@ impl GenericRange for RangeIndexed {
     }
 }
 
-/// Represents a parsed range entry, possibly containing some data.
+/// Represents a genomic range entry with some data.
+///
+/// This is used as a type for holding a range with associated data directly
+/// from a parser.
 #[derive(Debug, Clone, PartialEq)]
-pub struct RangeRecord<U> {
+pub struct GenomicRangeRecord<U> {
     pub seqname: String,
     pub start: Position,
     pub end: Position,
     pub data: U,
 }
 
-impl<U> RangeRecord<U> {
+impl<U> GenomicRangeRecord<U> {
     pub fn new(seqname: String, start: Position, end: Position, data: U) -> Self {
         Self {
             seqname,
@@ -103,7 +106,7 @@ impl<U> RangeRecord<U> {
     }
 }
 
-impl<U: Clone> GenericRange for RangeRecord<U> {
+impl<U: Clone> GenericRange for GenomicRangeRecord<U> {
     fn start(&self) -> Position {
         self.start
     }
@@ -121,13 +124,13 @@ impl<U: Clone> GenericRange for RangeRecord<U> {
     }
 }
 
-impl TsvSerialize for RangeRecord<()> {
+impl TsvSerialize for GenomicRangeRecord<()> {
     fn to_tsv(&self) -> String {
         format!("{}\t{}\t{}", self.seqname, self.start, self.end)
     }
 }
 
-impl<U: TsvSerialize> TsvSerialize for RangeRecord<Option<U>> {
+impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<Option<U>> {
     fn to_tsv(&self) -> String {
         match &self.data {
             None => {
@@ -146,7 +149,7 @@ impl<U: TsvSerialize> TsvSerialize for RangeRecord<Option<U>> {
     }
 }
 
-impl<U: TsvSerialize> TsvSerialize for RangeRecord<U> {
+impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<U> {
     fn to_tsv(&self) -> String {
         format!(
             "{}\t{}\t{}\t{}",
@@ -158,15 +161,15 @@ impl<U: TsvSerialize> TsvSerialize for RangeRecord<U> {
     }
 }
 
-/// Represents a range entry without data.
+/// Represents a genomic range entry without data.
 #[derive(Debug, Clone, PartialEq)]
-pub struct RangeEmptyRecord {
+pub struct GenomicRangeEmptyRecord {
     pub seqname_index: usize,
     pub start: Position,
     pub end: Position,
 }
 
-impl RangeEmptyRecord {
+impl GenomicRangeEmptyRecord {
     pub fn new(seqname_index: usize, start: Position, end: Position) -> Self {
         Self {
             seqname_index,
@@ -174,8 +177,8 @@ impl RangeEmptyRecord {
             end,
         }
     }
-    pub fn to_record(self, seqnames: &[String]) -> RangeRecord<()> {
-        RangeRecord {
+    pub fn to_record(self, seqnames: &[String]) -> GenomicRangeRecord<()> {
+        GenomicRangeRecord {
             seqname: seqnames[self.seqname_index].clone(),
             start: self.start,
             end: self.end,
@@ -184,7 +187,7 @@ impl RangeEmptyRecord {
     }
 }
 
-impl GenericRange for RangeEmptyRecord {
+impl GenericRange for GenomicRangeEmptyRecord {
     fn start(&self) -> Position {
         self.start
     }
@@ -208,11 +211,11 @@ pub struct RangeIndexedRecord {
     pub seqname_index: usize,
     pub start: Position,
     pub end: Position,
-    pub index: usize,
+    pub index: Option<usize>,
 }
 
 impl RangeIndexedRecord {
-    pub fn new(seqname_index: usize, start: Position, end: Position, index: usize) -> Self {
+    pub fn new(seqname_index: usize, start: Position, end: Position, index: Option<usize>) -> Self {
         Self {
             seqname_index,
             start,
@@ -223,16 +226,26 @@ impl RangeIndexedRecord {
     pub fn to_record<'a, T>(
         self,
         seqnames: &[String],
-        data: &'a T,
-    ) -> RangeRecord<<T as IndexedDataContainer<'a>>::Item>
+        data: Option<&'a T>,
+    ) -> GenomicRangeRecord<Option<<T as IndexedDataContainer<'a>>::Item>>
     where
         T: IndexedDataContainer<'a> + TsvSerialize,
     {
-        RangeRecord {
+        let data = data.and_then(|data_ref| self.index.map(|idx| data_ref.get_value(idx)));
+
+        GenomicRangeRecord {
             seqname: seqnames[self.seqname_index].clone(),
             start: self.start,
             end: self.end,
-            data: data.get_value(self.index),
+            data,
+        }
+    }
+    pub fn to_record_empty<T>(self, seqnames: &[String]) -> GenomicRangeRecord<()> {
+        GenomicRangeRecord {
+            seqname: seqnames[self.seqname_index].clone(),
+            start: self.start,
+            end: self.end,
+            data: (),
         }
     }
 }
@@ -245,7 +258,7 @@ impl GenericRange for RangeIndexedRecord {
         self.end
     }
     fn index(&self) -> Option<usize> {
-        Some(self.index)
+        self.index
     }
     fn set_start(&mut self, start: Position) {
         self.start = start

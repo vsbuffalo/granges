@@ -136,7 +136,8 @@ impl From<Interval<&usize>> for RangeIndexed {
 /// Their iterator does not consume, but we need an owned (or copyable,
 /// as is case here) type to map out. Thus, we need this odd variant of
 /// an iterator that doesn't return references and does not consume.
-impl RangesIterable<RangeIndexed> for COITrees<usize> {
+impl RangesIterable for COITrees<usize> {
+    type RangeType = RangeIndexed;
     fn iter_ranges(&self) -> Box<dyn Iterator<Item = RangeIndexed> + '_> {
         let iter = self.ranges.iter();
         let converted_iter = iter.map(RangeIndexed::from);
@@ -144,7 +145,8 @@ impl RangesIterable<RangeIndexed> for COITrees<usize> {
     }
 }
 
-impl RangesIterable<RangeEmpty> for COITrees<()> {
+impl RangesIterable for COITrees<()> {
+    type RangeType = RangeEmpty;
     fn iter_ranges(&self) -> Box<dyn Iterator<Item = RangeEmpty> + '_> {
         let iter = self.ranges.iter();
         let converted_iter = iter.map(RangeEmpty::from);

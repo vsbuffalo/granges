@@ -5,12 +5,12 @@ use indexmap::IndexMap;
 
 use crate::{
     io::OutputFile,
-    iterators::{GRangesEmptyIterator, GRangesIterator},
+    iterators::GRangesIterator,
     prelude::GRangesError,
     ranges::{
         coitrees::{COITrees, COITreesIndexed},
         vec::{VecRanges, VecRangesEmpty, VecRangesIndexed},
-        RangeEmpty, RangeIndexed, RangeRecord,
+        GenomicRangeRecord, RangeEmpty, RangeIndexed,
     },
     traits::{GenericRange, IndexedDataContainer, RangeContainer, RangesIterable, TsvSerialize},
     Position,
@@ -118,7 +118,7 @@ where
 
         let seqnames = self.seqnames();
         for range in self.iter_ranges() {
-            let record = range.to_record(&seqnames, self.data.as_ref().unwrap());
+            let record = range.to_record(&seqnames, self.data.as_ref());
             writeln!(writer, "{}", record.to_tsv())?;
         }
         Ok(())
@@ -150,7 +150,7 @@ impl<U> GRanges<VecRangesIndexed, Vec<U>> {
         seqlens: IndexMap<String, Position>,
     ) -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError>
     where
-        I: Iterator<Item = Result<RangeRecord<U>, GRangesError>>,
+        I: Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>>,
     {
         let mut gr = GRanges::new_vec(&seqlens);
         for possible_entry in iter {
@@ -167,7 +167,7 @@ impl GRanges<VecRangesEmpty, ()> {
         seqlens: IndexMap<String, Position>,
     ) -> Result<GRanges<VecRangesEmpty, ()>, GRangesError>
     where
-        I: Iterator<Item = Result<RangeRecord<()>, GRangesError>>,
+        I: Iterator<Item = Result<GenomicRangeRecord<()>, GRangesError>>,
     {
         let mut gr = GRanges::new_vec(&seqlens);
         for possible_entry in iter {
@@ -180,7 +180,7 @@ impl GRanges<VecRangesEmpty, ()> {
 
 impl<R> GRanges<R, ()>
 where
-    R: RangeContainer + RangesIterable<RangeEmpty>,
+    R: RangeContainer + RangesIterable,
 {
     // TODO: candidate for a trait
     pub fn to_bed3(&self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError> {
@@ -191,8 +191,8 @@ where
         let mut writer = output.writer()?;
 
         let seqnames = self.seqnames();
-        for range in self.iter_ranges_empty() {
-            let record = range.to_record(&seqnames);
+        for range in self.iter_ranges() {
+            let record = range.to_record_empty::<()>(&seqnames);
             writeln!(writer, "{}", record.to_tsv())?;
         }
         Ok(())
@@ -219,20 +219,7 @@ impl<T> GRanges<VecRangesIndexed, T> {
 
 impl<R, T> GRanges<R, T>
 where
-    R: RangesIterable<RangeEmpty>,
-{
-    /// Create a new [`GRangesIterator`] to iterate through all
-    /// the ranges in this [`GRanges`] object. These ranges carry
-    /// no data index, unlike the method [`GRanges.iter_ranges()`]
-    /// available for range type for associated data containers.
-    pub fn iter_ranges_empty(&self) -> GRangesEmptyIterator<'_, R> {
-        GRangesEmptyIterator::new(&self.ranges)
-    }
-}
-
-impl<R, T> GRanges<R, T>
-where
-    R: RangesIterable<RangeIndexed>,
+    R: RangesIterable,
 {
     /// Create a new [`GRangesIterator`] to iterate through all the ranges in this [`GRanges`] object.
     pub fn iter_ranges(&self) -> GRangesIterator<'_, R> {

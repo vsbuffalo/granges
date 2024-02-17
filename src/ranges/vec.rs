@@ -66,7 +66,8 @@ impl RangesIntoIterable<RangeIndexed> for VecRanges<RangeIndexed> {
     }
 }
 
-impl RangesIterable<RangeIndexed> for VecRanges<RangeIndexed> {
+impl RangesIterable for VecRanges<RangeIndexed> {
+    type RangeType = RangeIndexed;
     fn iter_ranges(&self) -> Box<dyn Iterator<Item = RangeIndexed> + '_> {
         let iter = self.ranges.iter();
         // NOTE: RangeIndexed is copyable but there still is overhead here
@@ -82,7 +83,8 @@ impl RangesIntoIterable<RangeEmpty> for VecRanges<RangeEmpty> {
     }
 }
 
-impl RangesIterable<RangeEmpty> for VecRanges<RangeEmpty> {
+impl RangesIterable for VecRanges<RangeEmpty> {
+    type RangeType = RangeEmpty;
     fn iter_ranges(&self) -> Box<dyn Iterator<Item = RangeEmpty> + '_> {
         let iter = self.ranges.iter();
         // NOTE: RangeIndexed is copyable but there still is overhead here
