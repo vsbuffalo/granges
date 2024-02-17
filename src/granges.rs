@@ -13,7 +13,7 @@ use crate::{
         GenomicRangeRecord, RangeEmpty, RangeIndexed,
     },
     traits::{GenericRange, IndexedDataContainer, RangeContainer, RangesIterable, TsvSerialize},
-    Position,
+    Position, join::JoinIterator,
 };
 
 #[derive(Clone, Debug)]
@@ -214,6 +214,18 @@ impl<T> GRanges<VecRangesIndexed, T> {
             ranges: new_ranges,
             data: self.data,
         })
+    }
+}
+
+impl<CL, DL> GRanges<CL, DL> 
+where CL: RangesIterable {
+    pub fn left_overlaps<DR>(self, right: &GRanges<COITreesIndexed, DR>) 
+    -> GRanges<CL, JoinIterator<'_, CL, DL, DR>> {
+        let join_iter = JoinIterator::new(&self, &right);
+        GRanges {
+            ranges: self.ranges,
+            data: Some(join_iter),
+        }
     }
 }
 

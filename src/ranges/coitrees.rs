@@ -1,6 +1,6 @@
 use coitrees::{BasicCOITree, GenericInterval, Interval, IntervalNode, IntervalTree};
 
-use crate::{error::GRangesError, traits::RangeContainer, traits::RangesIterable, Position};
+use crate::{error::GRangesError, traits::{RangeContainer, GenericRange}, traits::RangesIterable, Position};
 
 use super::{validate_range, vec::VecRanges, RangeEmpty, RangeIndexed};
 
@@ -27,6 +27,43 @@ impl GenericInterval<usize> for RangeIndexed {
     }
     fn metadata(&self) -> &usize {
         &self.index
+    }
+}
+
+impl GenericRange for IntervalNode<(), usize> {
+    fn start(&self) -> Position {
+        self.first().try_into().unwrap()
+    }
+    fn end(&self) -> Position {
+        (self.last() + 1).try_into().unwrap()
+    }
+    fn index(&self) -> Option<usize> {
+        None
+    }
+    fn set_end(&mut self, end: Position) {
+        unimplemented!()
+    }
+    fn set_start(&mut self, start: Position) {
+        unimplemented!()
+    }
+}
+
+
+impl GenericRange for IntervalNode<usize, usize> {
+    fn start(&self) -> Position {
+        self.first().try_into().unwrap()
+    }
+    fn end(&self) -> Position {
+        (self.last() + 1).try_into().unwrap()
+    }
+    fn index(&self) -> Option<usize> {
+        Some(*self.metadata())
+    }
+    fn set_end(&mut self, end: Position) {
+        unimplemented!()
+    }
+    fn set_start(&mut self, start: Position) {
+        unimplemented!()
     }
 }
 

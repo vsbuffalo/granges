@@ -12,6 +12,15 @@ pub trait GenericRange: Clone {
     fn index(&self) -> Option<usize>;
     fn set_start(&mut self, start: Position);
     fn set_end(&mut self, end: Position);
+    fn width(&self) -> Position {
+        return self.end() - self.start() - 1
+    }
+    /// Calculate how many basepairs overlap this range and other.
+    fn overlap_width<R: GenericRange>(&self, other: &R) -> Position {
+        let overlap_start = std::cmp::max(self.start(), other.start());
+        let overlap_end = std::cmp::min(self.end(), other.end());
+        std::cmp::max(overlap_end - overlap_start + 1, 0)
+    }
 }
 
 /// Defines functionality common to all range containers, e.g. [`VecRanges<R>`] and
@@ -36,7 +45,7 @@ pub trait GeneralRangeRecordIterator<U>:
 
 /// The [`RangesIterable`] trait defines common functionality for iterating over
 /// the range types in range containers.
-pub trait RangesIterable {
+pub trait RangesIterable where Self: RangeContainer {
     type RangeType: GenericRange;
     fn iter_ranges(&self) -> Box<dyn Iterator<Item = Self::RangeType> + '_>;
 }
