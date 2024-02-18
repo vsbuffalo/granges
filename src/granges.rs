@@ -4,17 +4,16 @@ use genomap::GenomeMap;
 use indexmap::IndexMap;
 
 use crate::{
-    io::OutputFile,
+    io::{parsers::GenomicRangesIteratorVariant, OutputFile},
     iterators::GRangesIterator,
-    join::JoinIterator,
     prelude::GRangesError,
     ranges::{
-        coitrees::{COITrees, COITreesIndexed},
+        coitrees::{COITrees, COITreesIndexed, COITreesEmpty},
         vec::{VecRanges, VecRangesEmpty, VecRangesIndexed},
         GenomicRangeRecord, RangeEmpty, RangeIndexed,
     },
     traits::{GenericRange, IndexedDataContainer, RangeContainer, RangesIterable, TsvSerialize},
-    Position,
+    Position, PositionOffset,
 };
 
 #[derive(Clone, Debug)]
@@ -83,6 +82,14 @@ impl<R: GenericRange, T> GRanges<VecRanges<R>, T> {
     /// Consume this [`GRanges`] object and sort the ranges.
     pub fn sort(mut self) -> Self {
         self.ranges.values_mut().for_each(|ranges| ranges.sort());
+        self
+    }
+
+    /// Adjust all the ranges in this [`GRanges`] object in place.
+    pub fn adjust_ranges(mut self, start_delta: PositionOffset, end_delta: PositionOffset) -> Self {
+        self.ranges
+            .values_mut()
+            .for_each(|ranges| ranges.adjust_ranges(start_delta, end_delta));
         self
     }
 }
@@ -194,6 +201,8 @@ impl<T> GRanges<VecRanges<RangeIndexed>, T> {
 }
 
 impl<U> GRanges<VecRangesIndexed, Vec<U>> {
+    /// Create a new [`GRanges<VecRangesIndexed, Vec<U>>`] object from an iterator over
+    /// [`GenomicRangeRecord<U>`] records.
     pub fn from_iter<I>(
         iter: I,
         seqlens: &IndexMap<String, Position>,
@@ -210,20 +219,44 @@ impl<U> GRanges<VecRangesIndexed, Vec<U>> {
     }
 }
 
+/// This `enum` covers the two main cases encountered when reading ranges
+/// into a [`GRanges`] object:
+///  1. Ranges that have data that needs to be loaded into the data container. This
+///     also requires that the ranges stored in memory have an associated index pointing
+///     to the correct data element in the data container.
+///  2. Ranges that do not have data. In this case the data container is the null type
+///     `()`, and the ranges in the range containers do not need an index.
+///
+pub enum GRangesVariant {
+    WithData(GRanges<VecRangesIndexed, Vec<String>>),
+    WithoutData(GRanges<VecRangesEmpty, ()>),
+}
+
 impl GRanges<VecRangesEmpty, ()> {
-    pub fn from_iter_empty<I>(
-        iter: I,
-        seqlens: IndexMap<String, Position>,
-    ) -> Result<GRanges<VecRangesEmpty, ()>, GRangesError>
-    where
-        I: Iterator<Item = Result<GenomicRangeRecord<()>, GRangesError>>,
-    {
-        let mut gr = GRanges::new_vec(&seqlens);
-        for possible_entry in iter {
-            let entry = possible_entry?;
-            gr.push_range(&entry.seqname, entry.start, entry.end)?;
+    /// Create the appropriate [`GRanges`] object based on the variant of
+    /// the specified [`GenomicRangesIteratorVariant`].
+    pub fn from_iter_variant(
+        iter: GenomicRangesIteratorVariant,
+        seqlens: &IndexMap<String, Position>,
+    ) -> Result<GRangesVariant, GRangesError> {
+        match iter {
+            GenomicRangesIteratorVariant::WithoutData(iter) => {
+                let mut gr = GRanges::new_vec(&seqlens);
+                for possible_entry in iter {
+                    let entry = possible_entry?;
+                    gr.push_range(&entry.seqname, entry.start, entry.end)?;
+                }
+                Ok(GRangesVariant::WithoutData(gr))
+            }
+            GenomicRangesIteratorVariant::WithData(iter) => {
+                let mut gr = GRanges::new_vec(&seqlens);
+                for possible_entry in iter {
+                    let entry = possible_entry?;
+                    gr.push_range_with_data(&entry.seqname, entry.start, entry.end, entry.data)?;
+                }
+                Ok(GRangesVariant::WithData(gr))
+            }
         }
-        Ok(gr)
     }
 }
 
@@ -245,6 +278,24 @@ where
             writeln!(writer, "{}", record.to_tsv())?;
         }
         Ok(())
+    }
+}
+
+impl<T> GRanges<VecRangesEmpty, T> {
+    /// Convert this [`VecRangesEmpty`] range container to a cache-oblivious interval tree  
+    /// range container, [`COITreesEmpty`]. This is done using the [`coitrees`] library
+    /// by Daniel C. Jones.
+    pub fn to_coitrees(self) -> Result<GRanges<COITreesEmpty, T>, GRangesError> {
+        let old_ranges = self.ranges;
+        let mut new_ranges = GenomeMap::new();
+        for (seqname, vec_ranges) in old_ranges.into_iter() {
+            let trees = COITrees::from(vec_ranges);
+            new_ranges.insert(&seqname, trees)?;
+        }
+        Ok(GRanges {
+            ranges: new_ranges,
+            data: self.data,
+        })
     }
 }
 
@@ -320,10 +371,12 @@ where
         Ok(gr)
     }
 
-    pub fn filter_overlaps_anti<DR: IndexedDataContainer<'a>>(&self, right: &GRanges<COITreesIndexed, DR>)
-        -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError> {
-            todo!()
-        }
+    pub fn filter_overlaps_anti<DR: IndexedDataContainer<'a>>(
+        &self,
+        right: &GRanges<COITreesIndexed, DR>,
+    ) -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError> {
+        todo!()
+    }
 }
 
 impl<R, T> GRanges<R, T>

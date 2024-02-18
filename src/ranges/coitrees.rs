@@ -10,6 +10,7 @@ use crate::{
 use super::{validate_range, vec::VecRanges, RangeEmpty, RangeIndexed};
 
 pub type COITreesIndexed = COITrees<usize>;
+pub type COITreesEmpty = COITrees<()>;
 
 /// A [`coitrees::BasicCOITree`] interval tree for a single sequence's ranges.
 ///

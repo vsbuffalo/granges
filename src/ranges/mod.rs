@@ -349,10 +349,5 @@ mod tests {
         let range_a = RangeEmpty::new(1, 3);
         let range_b = RangeEmpty::new(2, 5);
         assert_eq!(range_a.overlap_width(&range_b), 0);
-
     }
-
-
-
-
 }

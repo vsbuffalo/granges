@@ -21,6 +21,12 @@ pub enum GRangesError {
     #[error("File has invalid column type entry: {0}")]
     InvalidColumnType(String),
 
+    // BedlikeIterator errors
+    #[error("GenomicRangeRecord encountered with None data in try_unwrap_data()")]
+    TryUnwrapDataError,
+    #[error("GenomicRangeRecord.try_unwrap_data() called on TSV with fewer than 4 columns")]
+    TooFewColumns,
+
     // Invalid genomic range errors
     #[error("Range invalid: start ({0}) must be greater than end ({1})")]
     InvalidGenomicRange(Position, Position),

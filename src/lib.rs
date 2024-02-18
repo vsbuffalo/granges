@@ -26,7 +26,7 @@ pub mod prelude {
     pub use crate::error::GRangesError;
     pub use crate::granges::GRanges;
     pub use crate::io::file::read_seqlens;
-    pub use crate::io::{Bed3RecordIterator, BedlikeIterator, TsvRecordIterator};
+    pub use crate::io::{BedlikeIterator, TsvRecordIterator};
 
     pub use crate::ranges::vec::{VecRangesEmpty, VecRangesIndexed};
     pub use crate::traits::{

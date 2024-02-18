@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::{
+    granges::GRangesVariant,
     io::OutputFile,
     prelude::*,
     ranges::operations::adjust_range,
@@ -21,7 +22,8 @@ pub fn granges_adjust(
 ) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
 
-    // input iterator
+    // create the parsing iterator, and detect which variant we need based on
+    // column number of the first entry.
     let bedlike_iterator = BedlikeIterator::new(bedfile)?;
 
     // output stream -- header is None for now (TODO)
@@ -33,70 +35,45 @@ pub fn granges_adjust(
     // for reporting stuff to the user
     let mut report = Report::new();
 
-    // Build GRanges objects if we need to sort, since that's
-    // in-memory. There are two variants we have to handle:
-    // indexed (with data container) and empty.
-    enum GRangesVariant {
-        Indexed(GRanges<VecRangesIndexed, Vec<String>>),
-        Empty(GRanges<VecRangesEmpty, ()>),
-    }
-
-    let number_columns = bedlike_iterator.number_columns();
-    let mut gr = match number_columns {
-        3 => GRangesVariant::Empty(GRanges::new_vec(&genome)),
-        n if n > 3 => GRangesVariant::Indexed(GRanges::new_vec(&genome)),
-        _ => panic!("Unexpected number of columns"),
-    };
-
     let mut skipped_ranges = 0;
-    for record in bedlike_iterator {
-        let range = record?;
-        let seqname = &range.seqname;
-        let length = *genome
-            .get(seqname)
-            .ok_or(GRangesError::MissingSequence(seqname.to_string()))?;
 
-        let possibly_adjusted_range = adjust_range(range, -both, both, length);
+    if !sort {
+        // if we don't need to sort, use iterator-based streaming processing
+        for record in bedlike_iterator {
+            let range = record?;
+            let seqname = &range.seqname;
+            let length = *genome
+                .get(seqname)
+                .ok_or(GRangesError::MissingSequence(seqname.to_string()))?;
 
-        if let Some(range_adjusted) = possibly_adjusted_range {
-            if !sort {
+            let possibly_adjusted_range = adjust_range(range, -both, both, length);
+
+            if let Some(range_adjusted) = possibly_adjusted_range {
                 writer.write_all(&range_adjusted.to_tsv().into_bytes())?;
             } else {
-                // we need to sort, so we build up the appropriate type of GRanges
-                // object, depending on if we need to hold data or not.
-                match gr {
-                    GRangesVariant::Empty(ref mut obj) => obj.push_range(
-                        &range_adjusted.seqname,
-                        range_adjusted.start,
-                        range_adjusted.end,
-                    )?,
-                    GRangesVariant::Indexed(ref mut obj) => obj.push_range_with_data(
-                        &range_adjusted.seqname,
-                        range_adjusted.start,
-                        range_adjusted.end,
-                        range_adjusted.data,
-                    )?,
-                }
+                skipped_ranges += 1;
             }
-        } else {
-            skipped_ranges += 1;
-        }
 
-        if skipped_ranges > 0 {
-            report.add_issue(format!(
-                "{} ranges were removed because their widths after adjustment were ≤ 0",
-                skipped_ranges
-            ))
+            if skipped_ranges > 0 {
+                report.add_issue(format!(
+                    "{} ranges were removed because their widths after adjustment were ≤ 0",
+                    skipped_ranges
+                ))
+            }
         }
-    }
-
-    // if we need to sort the ranges, do that and then output them
-    if sort {
+    } else {
+        // if we do need to sort, build up a GRanges variant and adjust ranges that way
+        let mut gr = GRanges::from_iter_variant(bedlike_iterator.into_variant()?, genome)?;
         match gr {
-            GRangesVariant::Empty(obj) => obj.sort().to_bed3(output)?,
-            GRangesVariant::Indexed(obj) => obj.sort().to_tsv(output)?,
+            GRangesVariant::WithoutData(granges) => {
+                granges.adjust_ranges(-both, both).to_bed3(output)?
+            }
+            GRangesVariant::WithData(granges) => {
+                granges.adjust_ranges(-both, both).to_tsv(output)?
+            }
         }
     }
+
     Ok(CommandOutput::new((), report))
 }
 
