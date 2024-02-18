@@ -6,6 +6,7 @@ use indexmap::IndexMap;
 use crate::{
     io::OutputFile,
     iterators::GRangesIterator,
+    join::JoinIterator,
     prelude::GRangesError,
     ranges::{
         coitrees::{COITrees, COITreesIndexed},
@@ -13,7 +14,7 @@ use crate::{
         GenomicRangeRecord, RangeEmpty, RangeIndexed,
     },
     traits::{GenericRange, IndexedDataContainer, RangeContainer, RangesIterable, TsvSerialize},
-    Position, join::JoinIterator,
+    Position,
 };
 
 #[derive(Clone, Debug)]
@@ -44,6 +45,16 @@ where
     /// Get the sequence names.
     pub fn seqnames(&self) -> Vec<String> {
         self.ranges.names()
+    }
+
+    /// Get the sequences lengths.
+    pub fn seqlens(&self) -> IndexMap<String, Position> {
+        let seqlens = self
+            .ranges
+            .iter()
+            .map(|(seqname, ranges)| (seqname.to_string(), ranges.sequence_length()))
+            .collect();
+        seqlens
     }
 }
 
@@ -125,9 +136,27 @@ where
     }
 }
 
-impl GRanges<VecRangesEmpty, ()> {
+impl<'a, C, T> GRanges<C, T>
+where
+    T: IndexedDataContainer<'a>,
+{
+    /// Get the data in the data container at specified index.
+    ///
+    /// # Panics
+    /// This will panic if there if the index is invalid, or the
+    /// data container is `None`. Both of these indicate internal
+    /// design errors: please file an issue of you encounter a panic.
+    pub fn get_data_value(&'a self, index: usize) -> <T as IndexedDataContainer>::Item {
+        self.data
+            .as_ref()
+            .expect("data container was None")
+            .get_value(index)
+    }
+}
+
+impl<T> GRanges<VecRanges<RangeEmpty>, T> {
     /// Push an empty range (no data) to the [`VecRangesEmpty`] range container.
-    pub fn push_range_empty(
+    pub fn push_range(
         &mut self,
         seqname: &str,
         start: Position,
@@ -144,10 +173,30 @@ impl GRanges<VecRangesEmpty, ()> {
     }
 }
 
+impl<T> GRanges<VecRanges<RangeIndexed>, T> {
+    /// Push an empty range (no data) to the [`VecRangesEmpty`] range container.
+    pub fn push_range_with_index(
+        &mut self,
+        seqname: &str,
+        start: Position,
+        end: Position,
+        index: usize,
+    ) -> Result<(), GRangesError> {
+        // push an unindexed (empty) range
+        let range = RangeIndexed::new(start, end, index);
+        let range_container = self
+            .ranges
+            .get_mut(seqname)
+            .ok_or(GRangesError::MissingSequence(seqname.to_string()))?;
+        range_container.push_range(range);
+        Ok(())
+    }
+}
+
 impl<U> GRanges<VecRangesIndexed, Vec<U>> {
     pub fn from_iter<I>(
         iter: I,
-        seqlens: IndexMap<String, Position>,
+        seqlens: &IndexMap<String, Position>,
     ) -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError>
     where
         I: Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>>,
@@ -172,7 +221,7 @@ impl GRanges<VecRangesEmpty, ()> {
         let mut gr = GRanges::new_vec(&seqlens);
         for possible_entry in iter {
             let entry = possible_entry?;
-            gr.push_range_empty(&entry.seqname, entry.start, entry.end)?;
+            gr.push_range(&entry.seqname, entry.start, entry.end)?;
         }
         Ok(gr)
     }
@@ -217,16 +266,64 @@ impl<T> GRanges<VecRangesIndexed, T> {
     }
 }
 
-impl<CL, DL> GRanges<CL, DL> 
-where CL: RangesIterable {
-    pub fn left_overlaps<DR>(self, right: &GRanges<COITreesIndexed, DR>) 
-    -> GRanges<CL, JoinIterator<'_, CL, DL, DR>> {
-        let join_iter = JoinIterator::new(&self, &right);
-        GRanges {
-            ranges: self.ranges,
-            data: Some(join_iter),
+impl<'a, CL, U> GRanges<CL, Vec<U>>
+where
+    CL: RangesIterable,
+    <CL as RangesIterable>::RangeType: GenericRange,
+    U: Clone,
+{
+    //pub fn left_overlaps<DR>(self, right: &'a GRanges<COITreesIndexed, DR>)
+    //-> GRanges<CL, JoinIterator<'a, CL, Vec<U>, DR>> {
+    //    //let mut obj = GRanges {
+    //    //    ranges: self.ranges,
+    //    //    data: None,
+    //    //};
+    //    //obj.data = Some(JoinIterator::new(&obj, &right));
+    //    //obj
+    //    todo!()
+    //}
+
+    /// Filter out ranges that do *not* have at least overlap with the `right` ranges.
+    ///
+    /// In database lingo, this is a type of *filtering join*, in particular a *semi join*.
+    /// See Hadley Wickham's excellent [R for Data
+    /// Science](https://r4ds.hadley.nz/joins.html#filtering-joins) for more information.
+    ///
+    /// Note that this consumes the `self` [`GRanges`] object, turning it into a new
+    /// [`GRanges<VecRangesIndexed, Vec<U>`]. The data container is rebuilt from indices
+    /// into a new [`Vec<U>`] where `U` is the associated type [`IndexedDataContainer::Item`],
+    /// which represents the individual data element in the data container.
+    pub fn filter_overlaps<DR: IndexedDataContainer<'a>>(
+        self,
+        right: &GRanges<COITreesIndexed, DR>,
+    ) -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError> {
+        let mut gr: GRanges<VecRangesIndexed, Vec<U>> = GRanges::new_vec(&self.seqlens());
+
+        for (seqname, left_ranges) in self.ranges.iter() {
+            for left_range in left_ranges.iter_ranges() {
+                if let Some(right_ranges) = right.ranges.get(&seqname) {
+                    let num_overlaps =
+                        right_ranges.count_overlaps(left_range.start(), left_range.end());
+                    if num_overlaps == 0 {
+                        // no overlaps -- skip
+                    } else {
+                        gr.push_range_with_index(
+                            seqname,
+                            left_range.start(),
+                            left_range.end(),
+                            left_range.index().unwrap(),
+                        )?;
+                    }
+                }
+            }
         }
+        Ok(gr)
     }
+
+    pub fn filter_overlaps_anti<DR: IndexedDataContainer<'a>>(&self, right: &GRanges<COITreesIndexed, DR>)
+        -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError> {
+            todo!()
+        }
 }
 
 impl<R, T> GRanges<R, T>

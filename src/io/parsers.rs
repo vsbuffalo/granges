@@ -12,7 +12,7 @@ use crate::ranges::GenomicRangeRecord;
 use crate::traits::GeneralRangeRecordIterator;
 use crate::Position;
 
-use super::noodles::convert_noodles_position;
+use super::noodles::convert_noodles_range;
 
 pub struct Bed3RecordIterator {
     bed_reader: bed::Reader<BufReader<Box<dyn Read>>>,
@@ -38,11 +38,14 @@ impl Iterator for Bed3RecordIterator {
     fn next(&mut self) -> Option<Self::Item> {
         self.bed_reader.records::<3>().next().map(|res| {
             res.map_err(GRangesError::IOError)
-                .map(|record| GenomicRangeRecord {
+                .map(|record| {
+                    let (start, end) = convert_noodles_range(record.start_position(), record.end_position());
+                    GenomicRangeRecord {
                     seqname: record.reference_sequence_name().to_string(),
-                    start: convert_noodles_position(record.start_position()),
-                    end: convert_noodles_position(record.end_position()),
+                    start,
+                    end,
                     data: (),
+                    }
                 })
         })
     }
@@ -153,7 +156,7 @@ impl Iterator for BedlikeIterator {
 ///            .exclude_seqnames(vec!["chr1".to_string()]);
 ///
 /// let seqlens = seqlens! { "chr1" => 22, "chr2" => 10, "chr3" => 10, "chr4" => 15 };
-/// let gr = GRanges::from_iter(iter, seqlens)
+/// let gr = GRanges::from_iter(iter, &seqlens)
 ///            .expect("parsing error");
 /// let mut iter = gr.iter_ranges();
 ///
@@ -345,8 +348,8 @@ mod tests {
     fn test_invalid_bedlike_iterator() {
         let iter = BedlikeIterator::new("tests_data/invalid.bed").unwrap();
         let seqlens = seqlens! { "sq0" => 10 };
-        let result: Result<GRanges<VecRangesIndexed, _>, _> = GRanges::from_iter(iter, seqlens);
-        dbg!(&result);
+        let result: Result<GRanges<VecRangesIndexed, _>, _> = GRanges::from_iter(iter, &seqlens);
+
         // note: the Rust LSP thinks this isn't used for some reason, so prefaced with _
         // to silence warnings.
         let _msg = "column '-1' in 'chr1\t-1\t20'".to_string();

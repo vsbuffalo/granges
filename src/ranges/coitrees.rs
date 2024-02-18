@@ -1,71 +1,15 @@
 use coitrees::{BasicCOITree, GenericInterval, Interval, IntervalNode, IntervalTree};
 
-use crate::{error::GRangesError, traits::{RangeContainer, GenericRange}, traits::RangesIterable, Position};
+use crate::{
+    error::GRangesError,
+    traits::RangesIterable,
+    traits::{GenericRange, RangeContainer},
+    Position,
+};
 
 use super::{validate_range, vec::VecRanges, RangeEmpty, RangeIndexed};
 
 pub type COITreesIndexed = COITrees<usize>;
-
-impl GenericInterval<()> for RangeEmpty {
-    fn first(&self) -> i32 {
-        self.start.try_into().unwrap()
-    }
-    fn last(&self) -> i32 {
-        self.end.try_into().unwrap()
-    }
-    fn metadata(&self) -> &() {
-        &()
-    }
-}
-
-impl GenericInterval<usize> for RangeIndexed {
-    fn first(&self) -> i32 {
-        self.start.try_into().unwrap()
-    }
-    fn last(&self) -> i32 {
-        self.end.try_into().unwrap()
-    }
-    fn metadata(&self) -> &usize {
-        &self.index
-    }
-}
-
-impl GenericRange for IntervalNode<(), usize> {
-    fn start(&self) -> Position {
-        self.first().try_into().unwrap()
-    }
-    fn end(&self) -> Position {
-        (self.last() + 1).try_into().unwrap()
-    }
-    fn index(&self) -> Option<usize> {
-        None
-    }
-    fn set_end(&mut self, end: Position) {
-        unimplemented!()
-    }
-    fn set_start(&mut self, start: Position) {
-        unimplemented!()
-    }
-}
-
-
-impl GenericRange for IntervalNode<usize, usize> {
-    fn start(&self) -> Position {
-        self.first().try_into().unwrap()
-    }
-    fn end(&self) -> Position {
-        (self.last() + 1).try_into().unwrap()
-    }
-    fn index(&self) -> Option<usize> {
-        Some(*self.metadata())
-    }
-    fn set_end(&mut self, end: Position) {
-        unimplemented!()
-    }
-    fn set_start(&mut self, start: Position) {
-        unimplemented!()
-    }
-}
 
 /// A [`coitrees::BasicCOITree`] interval tree for a single sequence's ranges.
 ///
@@ -107,6 +51,13 @@ impl<M: Clone> COITrees<M> {
         self.ranges.query(first, end - 1, visit)
     }
 
+    /// Returns the number of ranges that overlap the specified range.
+    pub fn count_overlaps(&self, start: Position, end: Position) -> usize {
+        let first = start.try_into().expect("could not covert");
+        let end: i32 = end.try_into().expect("could not covert");
+        self.ranges.query_count(first, end - 1)
+    }
+
     /// Return the number of ranges in this [`COITreeRangeContainer`] container.
     pub fn len(&self) -> usize {
         self.ranges.len()
@@ -143,6 +94,9 @@ impl From<COITrees<usize>> for VecRanges<RangeIndexed> {
 impl<R: Clone> RangeContainer for COITrees<R> {
     fn len(&self) -> usize {
         self.ranges.len()
+    }
+    fn sequence_length(&self) -> Position {
+        self.length
     }
 }
 
@@ -188,6 +142,66 @@ impl RangesIterable for COITrees<()> {
         let iter = self.ranges.iter();
         let converted_iter = iter.map(RangeEmpty::from);
         Box::new(converted_iter)
+    }
+}
+
+impl GenericInterval<()> for RangeEmpty {
+    fn first(&self) -> i32 {
+        self.start.try_into().unwrap()
+    }
+    fn last(&self) -> i32 {
+        self.end.try_into().unwrap()
+    }
+    fn metadata(&self) -> &() {
+        &()
+    }
+}
+
+impl GenericInterval<usize> for RangeIndexed {
+    fn first(&self) -> i32 {
+        self.start.try_into().unwrap()
+    }
+    fn last(&self) -> i32 {
+        self.end.try_into().unwrap()
+    }
+    fn metadata(&self) -> &usize {
+        &self.index
+    }
+}
+
+impl GenericRange for IntervalNode<(), usize> {
+    fn start(&self) -> Position {
+        self.first().try_into().unwrap()
+    }
+    fn end(&self) -> Position {
+        (self.last() + 1).try_into().unwrap()
+    }
+    fn index(&self) -> Option<usize> {
+        None
+    }
+    fn set_end(&mut self, end: Position) {
+        unimplemented!()
+    }
+    fn set_start(&mut self, start: Position) {
+        unimplemented!()
+    }
+}
+
+impl GenericRange for IntervalNode<usize, usize> {
+    fn start(&self) -> Position {
+        self.first().try_into().unwrap()
+    }
+    fn end(&self) -> Position {
+        (self.last() + 1).try_into().unwrap()
+    }
+    fn index(&self) -> Option<usize> {
+        Some(*self.metadata())
+    }
+    fn set_end(&mut self, end: Position) {
+        unimplemented!()
+    }
+    fn set_start(&mut self, start: Position) {
+        unimplemented!()
     }
 }
 

@@ -57,6 +57,9 @@ impl<R: Clone> RangeContainer for VecRanges<R> {
     fn len(&self) -> usize {
         self.ranges.len()
     }
+    fn sequence_length(&self) -> Position {
+        self.length
+    }
 }
 
 impl RangesIntoIterable<RangeIndexed> for VecRanges<RangeIndexed> {

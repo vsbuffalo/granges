@@ -13,13 +13,25 @@ pub trait GenericRange: Clone {
     fn set_start(&mut self, start: Position);
     fn set_end(&mut self, end: Position);
     fn width(&self) -> Position {
-        return self.end() - self.start() - 1
+        return self.end() - self.start() - 1;
     }
     /// Calculate how many basepairs overlap this range and other.
     fn overlap_width<R: GenericRange>(&self, other: &R) -> Position {
         let overlap_start = std::cmp::max(self.start(), other.start());
         let overlap_end = std::cmp::min(self.end(), other.end());
-        std::cmp::max(overlap_end - overlap_start + 1, 0)
+        std::cmp::max(overlap_end - overlap_start - 1, 0)
+    }
+
+    /// Return a tuple of the range created by an overlap with another range; `None` if no overlap.
+    fn overlap_range<R: GenericRange>(&self, other: &R) -> Option<(Position, Position)> {
+        let overlap_start = std::cmp::max(self.start(), other.start());
+        let overlap_end = std::cmp::min(self.end(), other.end());
+
+        if overlap_start <= overlap_end {
+            Some((overlap_start, overlap_end))
+        } else {
+            None
+        }
     }
 }
 
@@ -30,6 +42,7 @@ pub trait RangeContainer {
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
+    fn sequence_length(&self) -> Position;
 }
 
 /// Defines functionality for filtering [`RangeRecord`] entries based on their
@@ -37,7 +50,7 @@ pub trait RangeContainer {
 /// so these trait methods simplify excluding or retaining ranges based on what
 /// sequence (i.e. chromosome) they are on.
 pub trait GeneralRangeRecordIterator<U>:
-    Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>> + Sized
+Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>> + Sized
 {
     fn retain_seqnames(self, seqnames: Vec<String>) -> FilteredIntervals<Self, U>;
     fn exclude_seqnames(self, seqnames: Vec<String>) -> FilteredIntervals<Self, U>;
@@ -45,7 +58,10 @@ pub trait GeneralRangeRecordIterator<U>:
 
 /// The [`RangesIterable`] trait defines common functionality for iterating over
 /// the range types in range containers.
-pub trait RangesIterable where Self: RangeContainer {
+pub trait RangesIterable
+where
+Self: RangeContainer,
+{
     type RangeType: GenericRange;
     fn iter_ranges(&self) -> Box<dyn Iterator<Item = Self::RangeType> + '_>;
 }

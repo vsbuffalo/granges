@@ -39,7 +39,7 @@ pub const NRANDOM_RANGES: usize = 10000;
 
 // range length
 pub const MIN_LEN: Position = 1;
-pub const MAX_LEN: Position = 10000;
+pub const MAX_LEN: Position = 1000;
 
 // number of chromosome sequences
 pub const NCHROM: usize = 22;
@@ -98,7 +98,7 @@ pub fn random_granges(
             .get(seqname)
             .ok_or_else(|| GRangesError::MissingSequence(seqname.clone()))?;
         let (start, end) = random_range(chrom_len);
-        gr.push_range_empty(seqname, start, end)?;
+        gr.push_range(seqname, start, end)?;
     }
     Ok(gr)
 }

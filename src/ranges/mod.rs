@@ -24,6 +24,7 @@ unsafe impl Send for RangeEmpty {}
 impl RangeEmpty {
     /// Create a new 0-indexed right-exclusive range.
     pub fn new(start: Position, end: Position) -> Self {
+        assert!(end > start);
         Self { start, end }
     }
 }
@@ -61,6 +62,7 @@ unsafe impl Send for RangeIndexed {}
 impl RangeIndexed {
     /// Create a new 0-indexed right-exclusive range.
     pub fn new(start: Position, end: Position, index: usize) -> Self {
+        assert!(end > start, "{}-{}", start, end);
         Self { start, end, index }
     }
 }
@@ -97,6 +99,7 @@ pub struct GenomicRangeRecord<U> {
 
 impl<U> GenomicRangeRecord<U> {
     pub fn new(seqname: String, start: Position, end: Position, data: U) -> Self {
+        assert!(end > start);
         Self {
             seqname,
             start,
@@ -171,6 +174,7 @@ pub struct GenomicRangeEmptyRecord {
 
 impl GenomicRangeEmptyRecord {
     pub fn new(seqname_index: usize, start: Position, end: Position) -> Self {
+        assert!(end > start);
         Self {
             seqname_index,
             start,
@@ -216,6 +220,7 @@ pub struct GenomicRangeIndexedRecord {
 
 impl GenomicRangeIndexedRecord {
     pub fn new(seqname_index: usize, start: Position, end: Position, index: Option<usize>) -> Self {
+        assert!(end > start);
         Self {
             seqname_index,
             start,
@@ -297,7 +302,7 @@ pub fn validate_range(
 
 #[cfg(test)]
 mod tests {
-    use super::validate_range;
+    use super::{validate_range, RangeEmpty};
     use crate::prelude::*;
 
     #[test]
@@ -323,4 +328,31 @@ mod tests {
             Err(GRangesError::InvalidGenomicRangeForSequence(1, 10, 10))
         ));
     }
+
+    #[test]
+    fn test_overlap_range() {
+        let range_a = RangeEmpty::new(5, 8);
+        let range_b = RangeEmpty::new(4, 6);
+        assert_eq!(range_a.overlap_range(&range_b), Some((5, 6)));
+    }
+
+    #[test]
+    fn test_overlap_width() {
+        // let range_a = RangeEmpty::new(0, 2);
+        // let range_b = RangeEmpty::new(4, 6);
+        // assert_eq!(range_a.overlap_width(&range_b), 0);
+        //
+        // let range_a = RangeEmpty::new(0, 2);
+        // let range_b = RangeEmpty::new(2, 6);
+        // assert_eq!(range_a.overlap_width(&range_b), 0);
+        //
+        let range_a = RangeEmpty::new(1, 3);
+        let range_b = RangeEmpty::new(2, 5);
+        assert_eq!(range_a.overlap_width(&range_b), 0);
+
+    }
+
+
+
+
 }

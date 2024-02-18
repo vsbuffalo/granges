@@ -33,7 +33,9 @@ pub fn granges_adjust(
     // for reporting stuff to the user
     let mut report = Report::new();
 
-    // if we need to sort, we need to accumulate ranges in memory
+    // Build GRanges objects if we need to sort, since that's
+    // in-memory. There are two variants we have to handle:
+    // indexed (with data container) and empty.
     enum GRangesVariant {
         Indexed(GRanges<VecRangesIndexed, Vec<String>>),
         Empty(GRanges<VecRangesEmpty, ()>),
@@ -63,7 +65,7 @@ pub fn granges_adjust(
                 // we need to sort, so we build up the appropriate type of GRanges
                 // object, depending on if we need to hold data or not.
                 match gr {
-                    GRangesVariant::Empty(ref mut obj) => obj.push_range_empty(
+                    GRangesVariant::Empty(ref mut obj) => obj.push_range(
                         &range_adjusted.seqname,
                         range_adjusted.start,
                         range_adjusted.end,
@@ -95,6 +97,39 @@ pub fn granges_adjust(
             GRangesVariant::Indexed(obj) => obj.sort().to_tsv(output)?,
         }
     }
+    Ok(CommandOutput::new((), report))
+}
+
+/// Retain only the ranges that have at least one overlap with another set of ranges.
+pub fn granges_filter(
+    seqlens: &PathBuf,
+    left_bedfile: &PathBuf,
+    right_bedfile: &PathBuf,
+    output: Option<&PathBuf>,
+    sort: bool,
+) -> Result<CommandOutput<()>, GRangesError> {
+    let genome = read_seqlens(seqlens)?;
+
+    // in memory (sorted queries not yet supported)
+    let left_record_iter = BedlikeIterator::new(left_bedfile)?;
+    let right_record_iter = BedlikeIterator::new(right_bedfile)?;
+
+    let left_gr = GRanges::from_iter(left_record_iter, &genome)?;
+    let right_gr = GRanges::from_iter(right_record_iter, &genome)?.to_coitrees()?;
+
+    let intersection = left_gr.filter_overlaps(&right_gr)?;
+
+    // output stream -- header is None for now (TODO)
+    let output_stream = output.map_or(OutputFile::new_stdout(None), |file| {
+        OutputFile::new(file, None)
+    });
+    let mut writer = output_stream.writer()?;
+
+    // for reporting stuff to the user
+    let mut report = Report::new();
+
+    intersection.sort().to_tsv(output)?;
+
     Ok(CommandOutput::new((), report))
 }
 

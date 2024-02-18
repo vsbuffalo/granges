@@ -30,4 +30,7 @@ pub enum GRangesError {
     MissingSequence(String),
     #[error("Error encountered in genomap::GenomeMap")]
     GenomeMapError(#[from] GenomeMapError),
+
+    #[error("Invalid GRanges object: no data container.")]
+    NoDataContainer,
 }
