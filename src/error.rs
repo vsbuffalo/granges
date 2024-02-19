@@ -12,6 +12,8 @@ pub enum GRangesError {
     IOError(#[from] std::io::Error),
 
     // File parsing related errors
+    #[error("Could not detect genomic ranges filetype from extension.")]
+    CouldNotDetectRangesFiletype,
     #[error("Integer parsing error: {0}")]
     ParseIntError(#[from] ParseIntError),
     #[error("Float parsing error: {0}")]
@@ -39,4 +41,5 @@ pub enum GRangesError {
 
     #[error("Invalid GRanges object: no data container.")]
     NoDataContainer,
+
 }

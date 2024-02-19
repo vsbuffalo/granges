@@ -27,25 +27,6 @@ pub trait GenomicRangesOperationsExtended<C: RangeContainer> {
     fn from_iter<I>(iter: I, seqlens: &IndexMap<String, Position>) -> Result<GRanges<C, Self::DataContainerType>, GRangesError> where I: Iterator<Item=Result<GenomicRangeRecord<Self::DataElementType>, GRangesError>>;
 }
 
-pub trait GenomicRangesOperations<C: RangeContainer> {
-   /// Get the total number of ranges.
-    fn len(&self) -> usize;
-
-    /// Return whether the [`GRanges`] object is empty (contains no ranges).
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Get the raw range container.
-    fn get_ranges(&self, seqname: &str) -> Option<&C>;
-
-    /// Get the sequence names.
-    fn seqnames(&self) -> Vec<String>;
-
-    /// Get the sequences lengths.
-    fn seqlens(&self) -> IndexMap<String, Position>;
-}
-
 ///
 pub trait GenericRange: Clone {
     fn start(&self) -> Position;

@@ -164,29 +164,21 @@ impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<U> {
     }
 }
 
-/// Represents a genomic range entry without data.
+/// Represents a genomic range entry without data, e.g. from a BED3 parser.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GenomicRangeEmptyRecord {
-    pub seqname_index: usize,
+    pub seqname: String,
     pub start: Position,
     pub end: Position,
 }
 
 impl GenomicRangeEmptyRecord {
-    pub fn new(seqname_index: usize, start: Position, end: Position) -> Self {
+    pub fn new(seqname: String, start: Position, end: Position) -> Self {
         assert!(end > start);
         Self {
-            seqname_index,
+            seqname,
             start,
             end,
-        }
-    }
-    pub fn to_record(self, seqnames: &[String]) -> GenomicRangeRecord<()> {
-        GenomicRangeRecord {
-            seqname: seqnames[self.seqname_index].clone(),
-            start: self.start,
-            end: self.end,
-            data: (),
         }
     }
 }

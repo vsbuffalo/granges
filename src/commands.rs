@@ -89,28 +89,23 @@ pub fn granges_filter(
     let left_gr = GRanges::from_iter_variant(left_record_iter, &genome)?;
     let right_gr = GRanges::from_iter_variant(right_record_iter, &genome)?;
 
+    todo!()
+    //let right_gr = right_gr.to_coitrees();
 
-    match right_gr {
-        GRangesVariant::WithData(gr) => gr.to_coitrees(),
-        GRangesVariant::WithoutData(gr) => gr.to_coitrees(),
-    }
+    //let intersection = left_gr.filter_overlaps(&right_gr)?;
 
-    let right_gr = right_gr.to_coitrees();
+    //// output stream -- header is None for now (TODO)
+    //let output_stream = output.map_or(OutputFile::new_stdout(None), |file| {
+    //    OutputFile::new(file, None)
+    //});
+    //let mut writer = output_stream.writer()?;
 
-    let intersection = left_gr.filter_overlaps(&right_gr)?;
+    //// for reporting stuff to the user
+    //let mut report = Report::new();
 
-    // output stream -- header is None for now (TODO)
-    let output_stream = output.map_or(OutputFile::new_stdout(None), |file| {
-        OutputFile::new(file, None)
-    });
-    let mut writer = output_stream.writer()?;
+    //intersection.sort().to_tsv(output)?;
 
-    // for reporting stuff to the user
-    let mut report = Report::new();
-
-    intersection.sort().to_tsv(output)?;
-
-    Ok(CommandOutput::new((), report))
+    //Ok(CommandOutput::new((), report))
 }
 
 /// Generate a random BED-like file with genomic ranges.
