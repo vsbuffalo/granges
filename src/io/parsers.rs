@@ -74,15 +74,14 @@ use std::io::{BufRead, BufReader};
 use std::marker::PhantomData;
 use std::path::{PathBuf, Path};
 
-use indexmap::IndexMap;
 
 use crate::error::GRangesError;
-use crate::granges::GRanges;
 use crate::io::file::InputFile;
 use crate::ranges::{GenomicRangeRecord, GenomicRangeEmptyRecord};
 use crate::Position;
-use crate::traits::{RangeContainer, GenomicRangesOperationsExtended};
+use crate::traits::{RangeContainer, GenomicRangesOperationsExtended, GeneralRangeRecordIterator};
 
+#[derive(Clone, Debug, PartialEq)]
 pub enum RangeFileType {
     Bed3,
     Bedlike,
@@ -90,21 +89,35 @@ pub enum RangeFileType {
 }
 
 
-fn get_base_extension(filepath: impl Into<PathBuf>) -> Option<String> {
-    let path: PathBuf = filepath.into();
-    let extension = path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext_str| ext_str.to_owned());
 
-    match extension {
-        Some(ext) if ext.ends_with(".gz") => {
-            // remove the .gz, if there
-            Path::new(&ext)
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .map(|s| s.to_owned())
-        },
-        _ => extension,
+
+/// Get the *base* extension to help infer filetype, which ignores compression-related 
+/// extensions (`.gz` and `.bgz`).
+fn get_base_extension<P: AsRef<Path>>(filepath: P) -> Option<String> {
+    let path = filepath.as_ref();
+    
+    // get the filename and split by '.'
+    let parts: Vec<&str> = path.file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("")
+        .split('.')
+        .collect();
+
+    let ignore_extensions = vec!["gz", "bgz"];
+
+    let has_ignore_extension = parts.last()
+        .map_or(false, |ext| ignore_extensions.contains(ext));
+
+    if parts.len() > 2 && has_ignore_extension {
+        // if it's .gz, we return the second to last token,
+        // e.g. path/foo.bed.gz would return bed
+        Some(parts[parts.len() - 2].to_string())
+    } else if parts.len() > 1 {
+        // there is no .gz - return the last token.
+        Some(parts[parts.len() - 1].to_string())
+    } else {
+        // no extension found
+        None
     }
 }
 
@@ -114,12 +127,17 @@ impl RangeFileType {
         let path: PathBuf = filepath.into();
         let mut input_file = InputFile::new(&path);
         let _metadata = input_file.collect_metadata("#", None)?;
-        let number_columns =input_file.detect_columns("\t")?;
+        let number_columns = input_file.detect_columns("\t")?;
+
+        // get the extension, as a hint
         let extension = get_base_extension(path)
             .ok_or(GRangesError::CouldNotDetectRangesFiletype)?;
+
         let file_type = match (extension.as_str(), number_columns) {
             ("bed", 3) => RangeFileType::Bed3,
+            ("tsv", 3) => RangeFileType::Bed3,
             ("bed", n) if n > 3 => RangeFileType::Bedlike,
+            ("tsv", n) if n > 3 => RangeFileType::Bedlike,
             _ => RangeFileType::Unsupported,
         };
 
@@ -351,32 +369,34 @@ impl Iterator for BedlikeIterator {
 /// ```
 /// use granges::prelude::*;
 ///
-/// let iter = BedlikeIterator::new("tests_data/example.bed")
+/// let iter = Bed3Iterator::new("tests_data/example.bed")
 ///            .expect("error reading file")
 ///            .exclude_seqnames(vec!["chr1".to_string()]);
 ///
 /// let seqlens = seqlens! { "chr1" => 22, "chr2" => 10, "chr3" => 10, "chr4" => 15 };
-/// let gr = GRanges::from_iter(iter, &seqlens)
+/// let gr = GRanges::from_iter_ranges_only(iter, &seqlens)
 ///            .expect("parsing error");
 /// let mut iter = gr.iter_ranges();
 ///
 /// // the first range should be the third range in the file,
 /// // chr2:4-5
 /// assert_eq!(iter.next().unwrap().start, 4);
-/// assert_eq!(iter.next().unwrap().end, 5);
+/// assert_eq!(iter.next().unwrap().end, 6);
+/// assert_eq!(iter.next().unwrap().end, 15);
+/// assert_eq!(iter.next(), None);
 /// ```
-pub struct FilteredRanges<I, U>
+pub struct FilteredRanges<I, R>
 where
-I: Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>>,
+I: Iterator<Item = Result<R, GRangesError>>,
 {
     inner: I,
     retain_seqnames: Option<HashSet<String>>,
     exclude_seqnames: Option<HashSet<String>>,
 }
 
-impl<I, U> FilteredRanges<I, U>
+impl<I, R> FilteredRanges<I, R>
 where
-I: Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>>,
+I: Iterator<Item = Result<R, GRangesError>>,
 {
     pub fn new(
         inner: I,
@@ -393,7 +413,8 @@ I: Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>>,
     }
 }
 
-impl<I, U> Iterator for FilteredRanges<I, U>
+/// Range-filtering iterator implementation for [`GenomicRangeRecord<U>`].
+impl<I, U> Iterator for FilteredRanges<I, GenomicRangeRecord<U>>
 where
 I: Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>>,
 {
@@ -423,6 +444,49 @@ I: Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>>,
             }
         }
         None
+    }
+}
+
+/// Range-filtering iterator implementation for [`GenomicRangeEmptyRecord`].
+impl<I> Iterator for FilteredRanges<I, GenomicRangeEmptyRecord>
+where
+I: Iterator<Item = Result<GenomicRangeEmptyRecord, GRangesError>>,
+{
+    type Item = Result<GenomicRangeEmptyRecord, GRangesError>;
+
+    /// Get the next filtered entry, prioritizing exclude over retain.
+    fn next(&mut self) -> Option<Self::Item> {
+        for item in self.inner.by_ref() {
+            match &item {
+                Ok(entry) => {
+                    if self
+                        .exclude_seqnames
+                            .as_ref()
+                            .map_or(false, |ex| ex.contains(&entry.seqname))
+                            {
+                                continue;
+                            }
+                    if self
+                        .retain_seqnames
+                            .as_ref()
+                            .map_or(true, |rt| rt.contains(&entry.seqname))
+                            {
+                                return Some(item);
+                            }
+                }
+                Err(_) => return Some(item),
+            }
+        }
+        None
+    }
+}
+
+impl GeneralRangeRecordIterator<GenomicRangeEmptyRecord> for Bed3Iterator {
+    fn retain_seqnames(self, seqnames: Vec<String>) -> FilteredRanges<Self, GenomicRangeEmptyRecord> {
+        FilteredRanges::new(self, Some(seqnames), None)
+    }
+    fn exclude_seqnames(self, seqnames: Vec<String>) -> FilteredRanges<Self, GenomicRangeEmptyRecord> {
+        FilteredRanges::new(self, None, Some(seqnames))
     }
 }
 
@@ -535,9 +599,32 @@ pub fn parse_bed3(line: &str) -> Result<GenomicRangeEmptyRecord, GRangesError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{prelude::*, io::parsers::Bed3Iterator};
+    use crate::{prelude::*, io::parsers::{Bed3Iterator, get_base_extension}};
 
-    use super::BedlikeIterator;
+    use super::{BedlikeIterator, RangeFileType};
+
+    #[test]
+    fn test_get_base_extension() {
+        assert_eq!(get_base_extension("test.bed.gz").unwrap(), "bed");
+        assert_eq!(get_base_extension("test.bed").unwrap(), "bed");
+        assert_eq!(get_base_extension("some/path/test.bed.gz").unwrap(), "bed");
+        assert_eq!(get_base_extension("some/path/test.bed").unwrap(), "bed");
+        assert_eq!(get_base_extension("some/path/test.gff").unwrap(), "gff");
+        assert_eq!(get_base_extension("some/path/test.gff.gz").unwrap(), "gff");
+        assert_eq!(get_base_extension("test.gff.gz").unwrap(), "gff");
+        assert_eq!(get_base_extension("test.gff").unwrap(), "gff");
+        assert_eq!(get_base_extension("test"), None);
+        assert_eq!(get_base_extension("foo/test"), None);
+    }
+
+    #[test]
+    fn test_rangefiletype_detect() {
+        let range_filetype = RangeFileType::detect("tests_data/example.bed");
+        assert_eq!(range_filetype.unwrap(), RangeFileType::Bed3);
+
+        let range_filetype = RangeFileType::detect("tests_data/example_bedlike.tsv");
+        assert_eq!(range_filetype.unwrap(), RangeFileType::Bedlike);
+    }
 
     //#[test]
     //fn test_parser() {

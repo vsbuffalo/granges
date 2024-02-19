@@ -40,7 +40,7 @@ enum Commands {
         seqlens: PathBuf,
 
         /// an input BED-like TSV file
-        #[arg(long, required = true)]
+        #[arg(required = true)]
         bedfile: PathBuf,
 
         /// number of basepairs to expand the range start and end positions by
@@ -114,34 +114,35 @@ fn run() -> Result<(), GRangesError> {
             output,
             sort,
         }) => {
-            let genome = read_seqlens(seqlens)?;
-            match (left, right) {
-                (RangeFileType::Bed3(left_path), RangeFileType::Bed3(right_path)) => {
+            todo!()
+            //let genome = read_seqlens(seqlens)?;
+            //match (left, right) {
+            //    (RangeFileType::Bed3(left_path), RangeFileType::Bed3(right_path)) => {
 
-                    let left_iter = Bed3Iterator::new(left_path)?;
-                    let right_iter = Bed3Iterator::new(right_path)?;
+            //        let left_iter = Bed3Iterator::new(left_path)?;
+            //        let right_iter = Bed3Iterator::new(right_path)?;
 
-                    let left_gr = GRanges::from_iter_ranges_only(left_iter, &genome)?;
-                    let right_gr = GRanges::from_iter_ranges_only(right_iter, &genome)?;
+            //        let left_gr = GRanges::from_iter_ranges_only(left_iter, &genome)?;
+            //        let right_gr = GRanges::from_iter_ranges_only(right_iter, &genome)?;
 
-                    let right_gr = right_gr.to_coitrees()?;
+            //        let right_gr = right_gr.to_coitrees()?;
 
-                    let intersection = left_gr.filter
+            //        let intersection = left_gr.filter
 
-                    let output_stream = output.map_or(OutputFile::new_stdout(None), |file| {
-                        OutputFile::new(file, None)
-                    });
-                    let mut writer = output_stream.writer()?;
+            //        let output_stream = output.map_or(OutputFile::new_stdout(None), |file| {
+            //            OutputFile::new(file, None)
+            //        });
+            //        let mut writer = output_stream.writer()?;
 
-                    // for reporting stuff to the user
-                    let mut report = Report::new();
+            //        // for reporting stuff to the user
+            //        let mut report = Report::new();
 
-                    intersection.sort().to_tsv(output)?;
+            //        intersection.sort().to_tsv(output)?;
 
 
-                }
-            }
-            granges_filter(seqlens, left, right, output.as_ref(), *sort)
+            //    }
+            //}
+            //granges_filter(seqlens, left, right, output.as_ref(), *sort)
         },
         #[cfg(feature = "dev-commands")]
         Some(Commands::RandomBed {

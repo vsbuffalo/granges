@@ -73,11 +73,11 @@ pub trait DataContainer{}
 /// sequence names. [`RangeRecord`] are predominantly used in reading in data,
 /// so these trait methods simplify excluding or retaining ranges based on what
 /// sequence (i.e. chromosome) they are on.
-pub trait GeneralRangeRecordIterator<U>:
-    Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>> + Sized
+pub trait GeneralRangeRecordIterator<R: GenericRange>:
+    Iterator<Item = Result<R, GRangesError>> + Sized
 {
-    fn retain_seqnames(self, seqnames: Vec<String>) -> FilteredRanges<Self, U>;
-    fn exclude_seqnames(self, seqnames: Vec<String>) -> FilteredRanges<Self, U>;
+    fn retain_seqnames(self, seqnames: Vec<String>) -> FilteredRanges<Self, R>;
+    fn exclude_seqnames(self, seqnames: Vec<String>) -> FilteredRanges<Self, R>;
 }
 
 /// The [`RangesIterable`] trait defines common functionality for iterating over
