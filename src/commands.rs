@@ -63,15 +63,8 @@ pub fn granges_adjust(
         }
     } else {
         // if we do need to sort, build up a GRanges variant and adjust ranges that way
-        let mut gr = GRanges::from_iter_variant(bedlike_iterator.into_variant()?, genome)?;
-        match gr {
-            GRangesVariant::WithoutData(granges) => {
-                granges.adjust_ranges(-both, both).to_bed3(output)?
-            }
-            GRangesVariant::WithData(granges) => {
-                granges.adjust_ranges(-both, both).to_tsv(output)?
-            }
-        }
+        // let mut gr = GRanges::from_iter(bedlike_iterator, &genome)?;
+        // gr.adjust_ranges(-both, both).to_tsv(output)?
     }
 
     Ok(CommandOutput::new((), report))
@@ -88,11 +81,21 @@ pub fn granges_filter(
     let genome = read_seqlens(seqlens)?;
 
     // in memory (sorted queries not yet supported)
-    let left_record_iter = BedlikeIterator::new(left_bedfile)?;
-    let right_record_iter = BedlikeIterator::new(right_bedfile)?;
+    let left_record_iter = BedlikeIterator::new(left_bedfile)?
+        .into_variant()?;
+    let right_record_iter = BedlikeIterator::new(right_bedfile)?
+        .into_variant()?;
 
-    let left_gr = GRanges::from_iter(left_record_iter, &genome)?;
-    let right_gr = GRanges::from_iter(right_record_iter, &genome)?.to_coitrees()?;
+    let left_gr = GRanges::from_iter_variant(left_record_iter, &genome)?;
+    let right_gr = GRanges::from_iter_variant(right_record_iter, &genome)?;
+
+
+    match right_gr {
+        GRangesVariant::WithData(gr) => gr.to_coitrees(),
+        GRangesVariant::WithoutData(gr) => gr.to_coitrees(),
+    }
+
+    let right_gr = right_gr.to_coitrees();
 
     let intersection = left_gr.filter_overlaps(&right_gr)?;
 
@@ -126,7 +129,7 @@ pub fn granges_random_bed(
         gr = gr.sort();
     }
 
-    gr.to_bed3(output)?;
+    gr.to_tsv(output)?;
 
     let report = Report::new();
     Ok(CommandOutput::new((), report))

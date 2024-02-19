@@ -6,7 +6,7 @@ use crate::{
     granges::GRanges,
     iterators::GRangesIterator,
     ranges::coitrees::COITreesIndexed,
-    traits::{GenericRange, RangesIterable},
+    traits::{GenomicRangesOperations, GenericRange, RangesIterable},
     Position,
 };
 

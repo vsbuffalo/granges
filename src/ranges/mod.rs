@@ -209,7 +209,7 @@ impl GenericRange for GenomicRangeEmptyRecord {
     }
 }
 
-/// Represents a range entry, with indices to sequence name and data.
+/// Represents a range entry, with indices to sequence name and possibly data.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GenomicRangeIndexedRecord {
     pub seqname_index: usize,

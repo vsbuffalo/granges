@@ -56,9 +56,13 @@ impl<R: GenericRange> VecRanges<R> {
 
     /// Adjust all the ranges in this [`VecRanges`] range container.
     pub fn adjust_ranges(&mut self, start_delta: PositionOffset, end_delta: PositionOffset) {
-        for range in self.ranges {
-            adjust_range(range, start_delta, end_delta, self.length);
-        }
+        let mut ranges = std::mem::replace(&mut self.ranges, Vec::new());
+
+        ranges = ranges.into_iter().filter_map(|range| {
+            adjust_range(range, start_delta, end_delta, self.length)
+        }).collect();
+
+        self.ranges = ranges;
     }
 }
 

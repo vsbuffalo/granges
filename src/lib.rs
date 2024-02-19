@@ -30,6 +30,8 @@ pub mod prelude {
 
     pub use crate::ranges::vec::{VecRangesEmpty, VecRangesIndexed};
     pub use crate::traits::{
+        GenomicRangesOperations, GenomicRangesOperationsExtended,
+        GenomicRangesOperationsModifiable, GenomicRangesTsvSerialize, 
         GeneralRangeRecordIterator, GenericRange, IndexedDataContainer, RangesIntoIterable,
         RangesIterable, TsvSerialize,
     };

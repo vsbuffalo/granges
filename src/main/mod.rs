@@ -31,6 +31,11 @@ struct Cli {
     command: Option<Commands>,
 }
 
+#[derive(Clone)]
+enum FileType {
+    BED3(PathBuf),
+}
+
 #[derive(Subcommand)]
 enum Commands {
     Adjust {
@@ -38,8 +43,8 @@ enum Commands {
         #[arg(long, required = true)]
         seqlens: PathBuf,
         /// an input BED-like TSV file
-        #[arg(required = true)]
-        bedfile: PathBuf,
+        #[arg(value_enum, long, required = true)]
+        bedfile: FileType,
         /// number of basepairs to expand the range start and end positions by
         #[arg(long)]
         both: PositionOffset,

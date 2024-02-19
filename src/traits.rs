@@ -1,9 +1,50 @@
 //! Traits used by the GRanges library.
 //!
 
+use std::path::PathBuf;
+
+use indexmap::IndexMap;
+
 use crate::{
-    error::GRangesError, io::parsers::FilteredRanges, ranges::GenomicRangeRecord, Position,
+    error::GRangesError, io::parsers::FilteredRanges, ranges::GenomicRangeRecord, Position, granges::GRanges, PositionOffset,
 };
+
+/// Traits for [`GRanges`] types that can be modified.
+pub trait GenomicRangesOperationsModifiable<C: RangeContainer> {
+    fn adjust_ranges(self, start_delta: PositionOffset, end_delta: PositionOffset) -> Self;
+}
+
+pub trait GenomicRangesTsvSerialize<'a, C: RangeContainer> {
+    /// Output the TSV version of this [`GRanges`] object.
+    fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError>;
+}
+
+/// Traits for [`GRanges`] types that can be built from an iterator.
+pub trait GenomicRangesOperationsExtended<C: RangeContainer> {
+    type DataContainerType;
+    type DataElementType;
+    /// Build a new [`GRanges`] object from an iterator.
+    fn from_iter<I>(iter: I, seqlens: &IndexMap<String, Position>) -> Result<GRanges<C, Self::DataContainerType>, GRangesError> where I: Iterator<Item=Result<GenomicRangeRecord<Self::DataElementType>, GRangesError>>;
+}
+
+pub trait GenomicRangesOperations<C: RangeContainer> {
+   /// Get the total number of ranges.
+    fn len(&self) -> usize;
+
+    /// Return whether the [`GRanges`] object is empty (contains no ranges).
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Get the raw range container.
+    fn get_ranges(&self, seqname: &str) -> Option<&C>;
+
+    /// Get the sequence names.
+    fn seqnames(&self) -> Vec<String>;
+
+    /// Get the sequences lengths.
+    fn seqlens(&self) -> IndexMap<String, Position>;
+}
 
 ///
 pub trait GenericRange: Clone {
@@ -44,6 +85,8 @@ pub trait RangeContainer {
     }
     fn sequence_length(&self) -> Position;
 }
+
+pub trait DataContainer{}
 
 /// Defines functionality for filtering [`RangeRecord`] entries based on their
 /// sequence names. [`RangeRecord`] are predominantly used in reading in data,
@@ -92,7 +135,7 @@ pub trait RangesIntoIterable<R> {
 /// protect against this edge case would force most `GRanges`
 /// functions to return a `Result`. This would clog the API usage, so
 /// we opt to just panic.
-pub trait IndexedDataContainer<'a> {
+pub trait IndexedDataContainer<'a>: DataContainer {
     // note: I don't think we can refactor out this lifetime,
     // since it is needed often for associated types
     type Item;

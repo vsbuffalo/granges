@@ -1,14 +1,86 @@
 //! Functionality for general parsing, by turning BED-like files into iterators.
 //!
+//! ## Parsers
+//!
+//! Parsers in the GRanges library are designed to be:
+//!
+//!  1. *Iterator-based*: GRanges parsers are iterators, allow entries to be filtered or
+//!     manipulated on the fly using Rust's iterator methods like [`Iterator.filter`].
+//!
+//!  2. *Lazy*: GRanges parsers are lazy. Since all BED file formats are a superset of BED3, we can
+//!     parse the range components out of the first three columns and then just store the remaining
+//!     unparsed part of the line in a `String`.
+//!
+//!  3. *Permissive*: All GRanges parsers are built off of the [`TsvRecordIterator`], which reads
+//!     plaintext and gzip-compressed files and parses them according to a specified function. This
+//!     general parser should be able to accomodate every line-based range bioinformatics format
+//!     (BED3, BED5, GTF, GFF, VCF, etc). Downstream users can implement their own specific parsers
+//!     for these variants (please feel free to contribute a parser for a commonly-used variant to
+//!     GRanges too!).
+//!
+//! Since GRanges is fundamentally about manipulating genomic range data, all parsers output to the
+//! same record type: [`GenomicRangeRecord<Option<String>>`], which is generic over the data. The
+//! [`Option<String>`] here is because the lazy parser *at compile time* does not know how many
+//! columns it will encounter. If only three columns are encountered (e.g. a BED3 file), the data
+//! in this [`GenomicRangeRecord`] are all `None`. Then, the ranges that go into [`GRanges`] object
+//! do not have indices, since there is not data container.
+//!
+//! Otherwise, if there *is* data, this data needs to be pushed to the data container, and the
+//! indexed range type ([`RangeIndexed`]) is used in the range containers.
+//!
+//! While handling of this at compile time leads to very performant code with lower memory
+//! overhead, it has the downside that *we must handle both types at compile time*.
+//!
+//! 
+//! # Working Downstream of Parsers
+//!
+//! Often at runtime the exact file format may not be known. A user could specify a BED3 file,
+//! which only contains ranges and no data, or a BED* of BED-like file (see terminology below).
+//! Since GRanges aims to handle most situations *at compile time*, it must handle the process of
+//! figuring out how to take an iterator of [`GenomicRangeRecord<U>`] entries and 
+//!
+//!
+//!
+//! ## Terminology 
+//!
+//!  - BED3 - BED* - BED-like
+//!
+//!
+//! : it could be ranges-only (i.e. a BED3), or contain data (e.g. BED5). The lazy BED parser will
+//! output a [`GenomicRangeRecord<Option<String>>`], where the data would be `None` only in the
+//! case that three columns were encountered in the file (which must be a BED3). 
+//!
+//! In GRanges, there are two types of ranges: ranges with an index to an element in the data
+//! container, and ranges without indices (i.e. what we would use in the case of processing a BED3
+//! file). Since a [`GRanges`] object needs to have a single, concrete range type in its range
+//! containers, it must be known *at compile time* how one should convert the 
+//!
+//! Downstream pipelines must immediately determine how to handle whether there is additional data,
+//! or all of the [`GenomicRangeRecord`] entries are `None`, and 
+//!
+//!
+//! # BED-like File Parser Design 
+//!
+//! All BED formats (BED3, BED5, etc). are built upon a BED3. Often when working with these types
+//! of formats, many operations do not immediately require full parsing of the line, past the
+//! *range components*. This is because downstream operations may immediately filter away entries
+//! (e.g. based on width), or do an overlap operation, and then filter away entries based on some
+//! overlap criteria. Either way, it may be advantageous to work with ranges that just store some
+//! generic data.
+//!
 
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
+use indexmap::IndexMap;
+
 use crate::error::GRangesError;
+use crate::granges::GRanges;
 use crate::io::file::InputFile;
 use crate::ranges::GenomicRangeRecord;
 use crate::Position;
+use crate::traits::{RangeContainer, GenomicRangesOperationsExtended};
 
 /// An extensible TSV parser, which uses a supplied parser function to
 /// convert a line into a [`RangeRecord<U>`], a range with generic associated
@@ -98,6 +170,10 @@ impl BedlikeIterator {
         self.iter.num_columns
     }
 
+    pub fn is_bed3(&self) -> bool {
+        self.number_columns() == 3
+    }
+
     /// Try to unwrap each [`GenomicRangeRecord<Option<String>>`] iterator item into a
     /// [`GenomicRangeRecord<String>`] iterator item.
     ///
@@ -144,11 +220,22 @@ impl BedlikeIterator {
         })
     }
 
+    /// Map the iterator into [`GRanges`] object, by using the specified function to convert the
+    /// lazily-parsed [`GenomicRangeRecord<Option<String>>`] into some concrete type.
+    pub fn map_into_granges<C: RangeContainer, F, U>(self, func: F, seqlens: &IndexMap<String, Position>) 
+        -> Result<GRanges<C, <GRanges<C, Vec<U>> as GenomicRangesOperationsExtended<C>>::DataContainerType>, GRangesError>
+        where GRanges<C, Vec<U>>: GenomicRangesOperationsExtended<C>,
+        F: Fn(Result<GenomicRangeRecord<Option<String>>, GRangesError>) -> 
+            Result<GenomicRangeRecord<<GRanges<C, Vec<U>> as GenomicRangesOperationsExtended<C>>::DataElementType>, GRangesError> {
+        GRanges::from_iter(self.iter.map(func), seqlens)
+    }
+
+
     /// Try to convert the iterator into one of two variants: one with data and one without.
     pub fn into_variant(self) -> Result<GenomicRangesIteratorVariant, GRangesError> {
         let number_columns = self.number_columns();
 
-        if number_columns < 4 {
+        if number_columns == 3 {
             let without_data_iterator = self.drop_data().map(|result| {
                 result.map(|record| GenomicRangeRecord {
                     seqname: record.seqname,
@@ -366,7 +453,7 @@ mod tests {
         let iter = BedlikeIterator::new("tests_data/noodles_example.bed").unwrap();
 
         let seqlens = seqlens! { "sq0" => 10 };
-        let gr: GRanges<VecRangesEmpty, _> = GRanges::from_iter_empty(iter, seqlens).unwrap();
+        let gr: GRanges<VecRangesEmpty, _> = GRanges::from_iter(iter.drop_data(), &seqlens).unwrap();
 
         assert_eq!(gr.len(), 2);
 
@@ -381,19 +468,10 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_invalid_bed_noodles() {
-        let iter = Bed3RecordIterator::new("tests_data/invalid.bed").unwrap();
-
-        let seqlens = seqlens! { "sq0" => 10 };
-        let _gr: GRanges<VecRangesEmpty, _> = GRanges::from_iter_empty(iter, seqlens).unwrap();
-    }
-
-    #[test]
     fn test_invalid_bedlike_iterator() {
         let iter = BedlikeIterator::new("tests_data/invalid.bed").unwrap();
         let seqlens = seqlens! { "sq0" => 10 };
-        let result: Result<GRanges<VecRangesIndexed, _>, _> = GRanges::from_iter(iter, &seqlens);
+        let result: Result<GRanges<VecRangesEmpty, _>, _> = GRanges::from_iter(iter.drop_data(), &seqlens);
 
         // note: the Rust LSP thinks this isn't used for some reason, so prefaced with _
         // to silence warnings.
