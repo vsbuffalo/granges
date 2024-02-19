@@ -1,13 +1,12 @@
 use std::path::PathBuf;
 
 use crate::{
-    granges::GRangesVariant,
     io::OutputFile,
     prelude::*,
     ranges::operations::adjust_range,
     reporting::{CommandOutput, Report},
     test_utilities::random_granges,
-    PositionOffset,
+    PositionOffset, granges::GRangesVariant,
 };
 
 /// Adjust the genomic ranges in a bedfile by some specified amount.
@@ -73,44 +72,49 @@ pub fn granges_adjust(
 /// Retain only the ranges that have at least one overlap with another set of ranges.
 pub fn granges_filter(
     seqlens: &PathBuf,
-    left_bedfile: &PathBuf,
-    right_bedfile: &PathBuf,
+    left_ranges: &PathBuf,
+    right_ranges: &PathBuf,
     output: Option<&PathBuf>,
     sort: bool,
 ) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
 
-    // in memory (sorted queries not yet supported)
-    let left_record_iter = BedlikeIterator::new(left_bedfile)?
-        .into_variant()?;
-    let right_record_iter = BedlikeIterator::new(right_bedfile)?
-        .into_variant()?;
-
-    let left_gr = GRanges::from_iter_variant(left_record_iter, &genome)?;
-    let right_gr = GRanges::from_iter_variant(right_record_iter, &genome)?;
-
-
-    match right_gr {
-        GRangesVariant::WithData(gr) => gr.to_coitrees(),
-        GRangesVariant::WithoutData(gr) => gr.to_coitrees(),
-    }
-
-    let right_gr = right_gr.to_coitrees();
-
-    let intersection = left_gr.filter_overlaps(&right_gr)?;
-
-    // output stream -- header is None for now (TODO)
-    let output_stream = output.map_or(OutputFile::new_stdout(None), |file| {
-        OutputFile::new(file, None)
-    });
-    let mut writer = output_stream.writer()?;
-
-    // for reporting stuff to the user
-    let mut report = Report::new();
-
-    intersection.sort().to_tsv(output)?;
-
-    Ok(CommandOutput::new((), report))
+    // // in memory (sorted queries not yet supported)
+    // let left_record_iter = BedlikeIterator::new(left_bedfile)?
+    //     .into_variant()?;
+    // let right_record_iter = BedlikeIterator::new(right_bedfile)?
+    //     .into_variant()?;
+    //
+    // let left_gr = GRanges::from_iter_variant(left_record_iter, &genome)?;
+    // let right_gr = GRanges::from_iter_variant(right_record_iter, &genome)?;
+    //
+    // match (left_gr, right_gr) {
+    //     GRangesVariant::WithData()
+    // }
+    //
+    //
+    // match right_gr {
+    //     GRangesVariant::WithData(gr) => gr.to_coitrees(),
+    //     GRangesVariant::WithoutData(gr) => gr.to_coitrees(),
+    // }
+    //
+    // let right_gr = right_gr.to_coitrees();
+    //
+    // let intersection = left_gr.filter_overlaps(&right_gr)?;
+    //
+    // // output stream -- header is None for now (TODO)
+    // let output_stream = output.map_or(OutputFile::new_stdout(None), |file| {
+    //     OutputFile::new(file, None)
+    // });
+    // let mut writer = output_stream.writer()?;
+    //
+    // // for reporting stuff to the user
+    // let mut report = Report::new();
+    //
+    // intersection.sort().to_tsv(output)?;
+    //
+    // Ok(CommandOutput::new((), report))
+    todo!()
 }
 
 /// Generate a random BED-like file with genomic ranges.

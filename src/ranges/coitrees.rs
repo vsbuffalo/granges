@@ -33,6 +33,52 @@ impl<M: Clone> std::fmt::Debug for COITrees<M> {
     }
 }
 
+// pub trait COITreesOperations {
+//     type MetaDataType;
+//     fn validate_range(&self, start: Position, end: Position) -> Result<(), GRangesError>;
+//     fn query<F>(&self, start: Position, end: Position, visit: F) where F: FnMut(&IntervalNode<Self::MetaDataType, usize>);
+//     fn count_overlaps(&self, start: Position, end: Position) -> usize;
+//     fn len(&self) -> usize;
+//     fn is_empty(&self) -> bool {
+//         self.len() == 0
+//     }
+// }
+//
+// impl COITreesOperations for COITrees<()> {
+//     type MetaDataType = ();
+//     /// Validate a range, raising an error if it is invalid for some reason.
+//     fn validate_range(&self, start: Position, end: Position) -> Result<(), GRangesError> {
+//         validate_range(start, end, self.length)
+//     }
+//
+//     /// Query this range container for a particular range, and call a visit function on all
+//     /// overlapping ranges.
+//     fn query<F>(&self, start: Position, end: Position, visit: F)
+//     where
+//         F: FnMut(&IntervalNode<Self::MetaDataType, usize>),
+//     {
+//         // Note the terminology change to match coitrees (and uses i32s)
+//         let first = start.try_into().expect("could not covert");
+//         let end: i32 = end.try_into().expect("could not covert");
+//         // internally coitrees uses 0-indexed, right-inclusive "last"
+//         self.ranges.query(first, end - 1, visit)
+//     }
+//
+//     /// Returns the number of ranges that overlap the specified range.
+//     fn count_overlaps(&self, start: Position, end: Position) -> usize {
+//         let first = start.try_into().expect("could not covert");
+//         let end: i32 = end.try_into().expect("could not covert");
+//         self.ranges.query_count(first, end - 1)
+//     }
+//
+//     /// Return the number of ranges in this [`COITreeRangeContainer`] container.
+//     fn len(&self) -> usize {
+//         self.ranges.len()
+//     }
+// }
+//
+
+
 impl<M: Clone> COITrees<M> {
     /// Validate a range, raising an error if it is invalid for some reason.
     pub fn validate_range(&self, start: Position, end: Position) -> Result<(), GRangesError> {

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use indexmap::IndexMap;
 
 use crate::{
-    error::GRangesError, io::parsers::FilteredRanges, ranges::GenomicRangeRecord, Position, granges::GRanges, PositionOffset,
+    error::GRangesError, io::parsers::FilteredRanges, ranges::{GenomicRangeRecord, coitrees::{COITrees, }}, Position, granges::GRanges, PositionOffset,
 };
 
 /// Traits for [`GRanges`] types that can be modified.
@@ -14,21 +14,29 @@ pub trait GenomicRangesOperationsModifiable<C: RangeContainer> {
     fn adjust_ranges(self, start_delta: PositionOffset, end_delta: PositionOffset) -> Self;
 }
 
+/// Serialize various [`GRanges`] objects to tab-separated values (TSV) format.
 pub trait GenomicRangesTsvSerialize<'a, C: RangeContainer> {
     /// Output the TSV version of this [`GRanges`] object.
     fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError>;
 }
 
 /// Traits for [`GRanges`] types that can be built from an iterator.
+///
+/// The justification for this trait is that it unifies building [`GRanges`] objects
+/// from a single trait method, [`GenomicRangesOperationsExtended::from_iter()`]. This is
+/// used, for example, in [`BedlikeIterator.map_into_granges()`].
 pub trait GenomicRangesOperationsExtended<C: RangeContainer> {
     type DataContainerType;
     type DataElementType;
     /// Build a new [`GRanges`] object from an iterator.
-    fn from_iter<I>(iter: I, seqlens: &IndexMap<String, Position>) -> Result<GRanges<C, Self::DataContainerType>, GRangesError> where I: Iterator<Item=Result<GenomicRangeRecord<Self::DataElementType>, GRangesError>>;
+    fn from_iter<I>(iter: I, seqlens: &IndexMap<String, Position>) 
+        -> Result<GRanges<C, Self::DataContainerType>, GRangesError> 
+            where I: Iterator<Item=Result<GenomicRangeRecord<Self::DataElementType>, GRangesError>>;
 }
 
 pub trait GenomicRangesOperations<C: RangeContainer> {
-   /// Get the total number of ranges.
+    type DataContainerType;
+    /// Get the total number of ranges.
     fn len(&self) -> usize;
 
     /// Return whether the [`GRanges`] object is empty (contains no ranges).
@@ -45,6 +53,16 @@ pub trait GenomicRangesOperations<C: RangeContainer> {
     /// Get the sequences lengths.
     fn seqlens(&self) -> IndexMap<String, Position>;
 }
+
+/// Unify the conversion of various [`VecRanges<R>`] range containers to a [`COITrees<M>`]
+/// type (defined by the associated type, [`GenomicRangesIndexingOperations::COITreesType`].
+///
+/// This trait is necesssary because it's nicer for ergonomics to 
+pub trait GenomicRangesIndexingOperations<C: RangeContainer>: GenomicRangesOperations<C> {
+    type COITreesType;
+    fn to_coitrees(self) -> Result<GRanges<Self::COITreesType, Self::DataContainerType>, GRangesError>;
+}
+
 
 ///
 pub trait GenericRange: Clone {

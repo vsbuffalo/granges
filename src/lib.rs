@@ -32,6 +32,8 @@ pub mod prelude {
     pub use crate::traits::{
         GenomicRangesOperations, GenomicRangesOperationsExtended,
         GenomicRangesOperationsModifiable, GenomicRangesTsvSerialize, 
+        GenomicRangesIndexingOperations,
+
         GeneralRangeRecordIterator, GenericRange, IndexedDataContainer, RangesIntoIterable,
         RangesIterable, TsvSerialize,
     };

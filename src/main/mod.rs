@@ -1,14 +1,15 @@
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use granges::{
     commands::{granges_adjust, granges_filter},
-    prelude::GRangesError,
-    PositionOffset,
+    prelude::{GRangesError, GRanges, BedlikeIterator},
+    PositionOffset, traits::{GenomicRangesOperationsExtended, RangeContainer}, Position,
 };
 
 #[cfg(feature = "dev-commands")]
 use granges::commands::granges_random_bed;
+use indexmap::IndexMap;
 
 const INFO: &str = "\
 granges: genomic range operations built off of the GRanges library
@@ -31,9 +32,36 @@ struct Cli {
     command: Option<Commands>,
 }
 
-#[derive(Clone)]
+#[derive(Args, Clone)]
+#[group(required = true, multiple = false)]
 enum FileType {
-    BED3(PathBuf),
+    /// use a BED3 file (i.e. only containing the 3 genomic range columns) 
+    #[arg(long)]
+    Bed3(PathBuf),
+
+    /// use a BED-like file (a TSV that extends a BED3 file with more columns)
+    #[arg(long)]
+    Bedl(PathBuf),
+}
+
+
+
+impl FileType {
+    pub fn to_granges<R: RangeContainer, T>(self, seqlens: &IndexMap<String, Position>) -> Result<GRanges<R, Vec<T>>, GRangesError> 
+    where GRanges<R, T>: GenomicRangesOperationsExtended<R> {
+        match self {
+            FileType::Bed3(path) => {
+                let iter = BedlikeIterator::new(path)?.drop_data();
+                let gr = GRanges::from_iter(iter, seqlens);
+                gr
+            },
+            FileType::Bedl(path) => {
+                let iter = BedlikeIterator::new(path)?;
+                let gr = GRanges::from_iter(iter, seqlens);
+                gr
+            }
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -43,8 +71,8 @@ enum Commands {
         #[arg(long, required = true)]
         seqlens: PathBuf,
         /// an input BED-like TSV file
-        #[arg(value_enum, long, required = true)]
-        bedfile: FileType,
+        #[command(flatten)]
+        bedfile: PathBuf,
         /// number of basepairs to expand the range start and end positions by
         #[arg(long)]
         both: PositionOffset,
@@ -59,12 +87,15 @@ enum Commands {
         /// a TSV genome file of chromosome names and their lengths
         #[arg(long, required = true)]
         seqlens: PathBuf,
-        /// the "left" BED-like TSV file
-        #[arg(long, required = true)]
-        left: PathBuf,
+
+        /// an input BED-like TSV file
+        #[command(flatten)]
+        left: FileType,
+
         /// the "right" BED-like TSV file
         #[arg(long, required = true)]
-        right: PathBuf,
+        right: FileType,
+
         /// an optional output file (standard output will be used if not specified)
         #[arg(long)]
         output: Option<PathBuf>,

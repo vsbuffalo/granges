@@ -42,7 +42,7 @@ use crate::{
         vec::{VecRanges, VecRangesEmpty, VecRangesIndexed},
         GenomicRangeRecord, RangeEmpty, RangeIndexed,
     },
-    traits::{GenericRange, IndexedDataContainer, RangeContainer, RangesIterable, TsvSerialize, GenomicRangesOperations, GenomicRangesOperationsExtended, GenomicRangesOperationsModifiable, GenomicRangesTsvSerialize},
+    traits::{GenericRange, IndexedDataContainer, RangeContainer, RangesIterable, TsvSerialize, GenomicRangesOperations, GenomicRangesOperationsExtended, GenomicRangesOperationsModifiable, GenomicRangesTsvSerialize, GenomicRangesIndexingOperations},
     Position, PositionOffset,
 };
 
@@ -53,6 +53,7 @@ pub struct GRanges<C, T> {
 }
 
 impl<C: RangeContainer, T> GenomicRangesOperations<C> for GRanges<C, T> {
+    type DataContainerType = T;
     /// Get the total number of ranges.
     fn len(&self) -> usize {
         self.ranges.values().map(|ranges| ranges.len()).sum()
@@ -79,6 +80,7 @@ impl<C: RangeContainer, T> GenomicRangesOperations<C> for GRanges<C, T> {
     }
 }
 
+
 impl GenomicRangesOperationsExtended<VecRangesEmpty> for GRanges<VecRangesEmpty, ()> { 
     type DataContainerType = ();
     type DataElementType = ();
@@ -91,8 +93,6 @@ impl GenomicRangesOperationsExtended<VecRangesEmpty> for GRanges<VecRangesEmpty,
         Ok(gr)
     }
 }
-
-
 impl<T> GenomicRangesOperationsExtended<VecRangesIndexed> for GRanges<VecRangesIndexed, Vec<T>> { 
     type DataContainerType = Vec<T>;
     type DataElementType = T;
@@ -353,11 +353,13 @@ impl GRanges<VecRangesEmpty, ()> {
     }
 }
 
-impl<T> GRanges<VecRangesEmpty, T> {
+impl<T> GenomicRangesIndexingOperations<VecRangesEmpty> for GRanges<VecRangesEmpty, T> {
+    type COITreesType = COITreesEmpty;
+
     /// Convert this [`VecRangesEmpty`] range container to a cache-oblivious interval tree  
     /// range container, [`COITreesEmpty`]. This is done using the [`coitrees`] library
     /// by Daniel C. Jones.
-    pub fn to_coitrees(self) -> Result<GRanges<COITreesEmpty, T>, GRangesError> {
+    fn to_coitrees(self) -> Result<GRanges<COITreesEmpty, T>, GRangesError> {
         let old_ranges = self.ranges;
         let mut new_ranges = GenomeMap::new();
         for (seqname, vec_ranges) in old_ranges.into_iter() {
@@ -371,11 +373,14 @@ impl<T> GRanges<VecRangesEmpty, T> {
     }
 }
 
-impl<T> GRanges<VecRangesIndexed, T> {
+
+impl<T> GenomicRangesIndexingOperations<VecRangesIndexed> for GRanges<VecRangesIndexed, T> {
+    type COITreesType = COITreesIndexed;
+
     /// Convert this [`VecRangesIndexed`] range container to a cache-oblivious interval tree  
     /// range container, [`COITreesIndexed`]. This is done using the [`coitrees`] library
     /// by Daniel C. Jones.
-    pub fn to_coitrees(self) -> Result<GRanges<COITreesIndexed, T>, GRangesError> {
+    fn to_coitrees(self) -> Result<GRanges<COITreesIndexed, T>, GRangesError> {
         let old_ranges = self.ranges;
         let mut new_ranges = GenomeMap::new();
         for (seqname, vec_ranges) in old_ranges.into_iter() {
