@@ -122,7 +122,66 @@ fn get_base_extension<P: AsRef<Path>>(filepath: P) -> Option<String> {
 }
 
 
+/// Inspect the first line to check that it looks like a valid BED-like 
+/// file, i.e. the first column is there (there are no reasonable checks
+/// for sequence names other than presence), and the next to columns can 
+/// be parsed into a [`Position`]. 
+fn valid_bedlike(input_file: &mut InputFile) -> Result<bool, GRangesError> {
+    let _metadata = input_file.collect_metadata("#", None)?;
+    let mut reader = input_file.continue_reading()?;
+    let mut first_line = String::new();
+    reader.read_line(&mut first_line)?;
+
+    let columns = first_line.splitn(4, "\t").map(String::from).collect::<Vec<String>>();
+
+    if columns.len() < 3 {
+        // too few columns to be BED-like
+        return Ok(false);
+    }
+
+    // Attempt to parse the second and third columns as positions
+    let start_result = columns[1].trim().parse::<Position>();
+    let end_result = columns[2].trim().parse::<Position>();
+    dbg!(&columns);
+    dbg!((&start_result, &end_result));
+
+    // Check if both positions are valid
+    match (start_result, end_result) {
+        (Ok(_), Ok(_)) => Ok(true), // both are valid
+        _ => Ok(false), // one or both is not valid
+    }
+}
+
+
 impl RangeFileType {
+    /// Detect the type of range genomic range file type we are working with, and output
+    /// the appropriate [`RangeFileType`] enum variant.
+    ///
+    /// Detection works like this:
+    ///  1. Skip comment lines, starting with `#`. 
+    ///  2. Retrieve extension, removing any additional compression-related 
+    ///     extensions (`.gz` and `.bgz`) if present.
+    ///  3. Read the first line, and try to parse the second and third columns
+    ///     into [`Position`] types, to check if this is a BED-like file (i.e.
+    ///     the first three columns are sequence name, start, and end positions).
+    ///  4. Match against 
+    ///
+    /// Currently this supports:
+    ///  1. BED3 files, without range data.
+    ///  2. BED-like files, with BED3 first columns and optional additional columns
+    ///     after that. If there is no additional columnar data after the first
+    ///     three BED3 columns, the type is [`RangeFileType::Bed3`]. If there
+    ///     is additional columnar data, it is [`RangeFileType::Bedlike`].
+    ///  3. Files with `.tsv` extension but are BED-like (first three
+    ///     columns are BED3) will have the type [`RangeFileType::Bed3`]. This
+    ///     is because downstream [`GRanges`] operations need to know if any 
+    ///     additional data is present, which would need to be put in a data container.
+    ///  4. If the file type does not satisfy any of the rules above, it is 
+    ///     [`RangeFileType::Unsupported`].
+    ///
+    /// See the `match` statement in the source code for the exact rules. Additional 
+    /// genomic range file formats like GTF/GFF can easily be added later.
+    ///
     pub fn detect(filepath: impl Into<PathBuf>) -> Result<Self, GRangesError> {
         let path: PathBuf = filepath.into();
         let mut input_file = InputFile::new(&path);
@@ -133,11 +192,14 @@ impl RangeFileType {
         let extension = get_base_extension(path)
             .ok_or(GRangesError::CouldNotDetectRangesFiletype)?;
 
-        let file_type = match (extension.as_str(), number_columns) {
-            ("bed", 3) => RangeFileType::Bed3,
-            ("tsv", 3) => RangeFileType::Bed3,
-            ("bed", n) if n > 3 => RangeFileType::Bedlike,
-            ("tsv", n) if n > 3 => RangeFileType::Bedlike,
+        // test if the first row can be parsed into a BED-like file format.
+        let is_valid_bedlike = valid_bedlike(&mut input_file)?;
+        dbg!(extension.as_str(), number_columns, is_valid_bedlike);
+        let file_type = match (extension.as_str(), number_columns, is_valid_bedlike) {
+            ("bed", 3, true) => RangeFileType::Bed3,
+            ("tsv", 3, true) => RangeFileType::Bed3,
+            ("bed", n, true) if n > 3 => RangeFileType::Bedlike,
+            ("tsv", n, true) if n > 3 => RangeFileType::Bedlike,
             _ => RangeFileType::Unsupported,
         };
 
@@ -599,7 +661,7 @@ pub fn parse_bed3(line: &str) -> Result<GenomicRangeEmptyRecord, GRangesError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{prelude::*, io::parsers::{Bed3Iterator, get_base_extension}};
+    use crate::{prelude::*, io::{parsers::{Bed3Iterator, get_base_extension, valid_bedlike}, InputFile}};
 
     use super::{BedlikeIterator, RangeFileType};
 
@@ -624,6 +686,12 @@ mod tests {
 
         let range_filetype = RangeFileType::detect("tests_data/example_bedlike.tsv");
         assert_eq!(range_filetype.unwrap(), RangeFileType::Bedlike);
+    }
+
+    #[test]
+    fn test_valid_bedlike() {
+        assert_eq!(valid_bedlike(&mut InputFile::new("tests_data/example.bed")).unwrap(), true);
+        assert_eq!(valid_bedlike(&mut InputFile::new("tests_data/invalid_format.bed")).unwrap(), false);
     }
 
     //#[test]
