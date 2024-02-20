@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 use granges::{
-    commands::{granges_adjust},
+    commands::{granges_adjust, granges_filter},
     io::{parsers::Bed3Iterator, OutputFile},
     prelude::{read_seqlens, GRanges, GRangesError, GenomicRangesFile},
     reporting::{Report, CommandOutput},
@@ -115,47 +115,7 @@ fn run() -> Result<(), GRangesError> {
             output,
             sort,
         }) => {
-            let genome = read_seqlens(seqlens)?;
-            let mut report = Report::new();
-
-            let left_filetype = GenomicRangesFile::detect(left)?;
-            let right_filetype = GenomicRangesFile::detect(right)?;
-
-            match (left_filetype, right_filetype) {
-                (GenomicRangesFile::Bed3(left_file), GenomicRangesFile::Bed3(right_file)) => {
-                    let left_iter = Bed3Iterator::new(left_file)?;
-                    let right_iter = Bed3Iterator::new(right_file)?;
-
-                    let left_gr = GRangesEmpty::from_iter(left_iter, &genome)?; let right_gr =
-                        GRangesEmpty::from_iter(right_iter, &genome)?;
-
-                    let right_gr = right_gr.to_coitrees()?;
-
-                    let intersection = left_gr.filter_overlaps(&right_gr);
-                    right_gr.len();
-
-                    let output_stream = output.as_ref().map_or(OutputFile::new_stdout(None), |file| {
-                        OutputFile::new(file, None)
-                    });
-                    let mut writer = output_stream.writer()?;
-
-                    // for reporting stuff to the user
-                    let mut report = Report::new();
-
-                    Ok(CommandOutput::new((), report))
-                }
-                (GenomicRangesFile::Bed3(left_file), GenomicRangesFile::Bedlike(right_file)) => {
-                    Ok(CommandOutput::new((), report))
-                }
-                (GenomicRangesFile::Bedlike(left_file), GenomicRangesFile::Bed3(right_file)) => {
-                    Ok(CommandOutput::new((), report))
-                }
-                (GenomicRangesFile::Bedlike(left_file), GenomicRangesFile::Bedlike(right_file)) => {
-                    Ok(CommandOutput::new((), report))
-                }
-                _ => Ok(CommandOutput::new((), report)),
-            }
-            // granges_filter(left, right, output.as_ref(), *sort)
+            granges_filter(seqlens, left, right, output.as_ref(), *sort)
         }
         #[cfg(feature = "dev-commands")]
         Some(Commands::RandomBed {

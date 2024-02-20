@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::{
-    io::{OutputFile, parsers::GenomicRangesParsers},
+    io::{OutputFile, parsers::GenomicRangesParser},
     prelude::*,
     ranges::operations::adjust_range,
     reporting::{CommandOutput, Report},
@@ -68,11 +68,11 @@ pub fn granges_adjust(
 
         let ranges_iter = GenomicRangesFile::parsing_iterator(bedfile)?;
         match ranges_iter {
-            GenomicRangesParsers::Bed3(iter) => {
+            GenomicRangesParser::Bed3(iter) => {
                 let gr = GRangesEmpty::from_iter(iter, &genome)?;
                 gr.adjust_ranges(-both, both).to_tsv(output)?
             },
-            GenomicRangesParsers::Bedlike(iter) => {
+            GenomicRangesParser::Bedlike(iter) => {
                 // Note the call to try_unwrap_data() here: this is because
                 // we know that the records *do* have data. Unwrapping the Option<String>
                 // values means that writing to TSV doesn't have to deal with this (which 
@@ -80,7 +80,7 @@ pub fn granges_adjust(
                 let gr = GRanges::from_iter(iter.try_unwrap_data()?, &genome)?;
                 gr.adjust_ranges(-both, both).to_tsv(output)?
             },
-            GenomicRangesParsers::Unsupported => {
+            GenomicRangesParser::Unsupported => {
                 return Err(GRangesError::UnsupportedGenomicRangesFileFormat)
             },
 
@@ -88,37 +88,53 @@ pub fn granges_adjust(
     }
     Ok(CommandOutput::new((), report))
 }
-//
-// /// Retain only the ranges that have at least one overlap with another set of ranges.
-// pub fn granges_filter<DL, DR>(
-//     seqlens: &PathBuf,
-//     left_granges: GRanges<VecRangesEmpty, DL>,
-//     right_granges: GRanges<VecRangesEmpty, DR>,
-//     sort: bool,
-// ) -> Result<CommandOutput<()>, GRangesError>
-// where
-//     // we must be able to iterate over left ranges
-//     VecRangesEmpty: IterableRangeContainer, 
-//     // we must be able to convert the right GRanges to interval trees
-//      GRanges<VecRangesEmpty, ()>: GenomicRangesToIntervalTrees<()>,
-// {
-//     let right_granges = right_granges.to_coitrees()?;
-//
-//     // let intersection = left_granges.filter_overlaps_(&right_granges)?;
-//
-//     //// output stream -- header is None for now (TODO)
-//     //let output_stream = output.map_or(OutputFile::new_stdout(None), |file| {
-//     //    OutputFile::new(file, None)
-//     //});
-//     //let mut writer = output_stream.writer()?;
-//
-//     // for reporting stuff to the user
-//     let mut report = Report::new();
-//
-//     //intersection.sort().to_tsv(output)?;
-//
-//     Ok(CommandOutput::new((), report))
-// }
+
+/// Retain only the ranges that have at least one overlap with another set of ranges.
+pub fn granges_filter(
+    seqlens: &PathBuf,
+    left_path: &PathBuf,
+    right_path: &PathBuf,
+    output: Option<&PathBuf>,
+    sort: bool,
+) -> Result<CommandOutput<()>, GRangesError> {
+    let genome = read_seqlens(seqlens)?;
+
+    let left_iter = GenomicRangesFile::parsing_iterator(left_path)?;
+    let right_iter = GenomicRangesFile::parsing_iterator(right_path)?;
+
+    let output_stream = output.as_ref().map_or(OutputFile::new_stdout(None), |file| {
+        OutputFile::new(file, None)
+    });
+    let mut writer = output_stream.writer()?;
+
+    // for reporting stuff to the user
+    let mut report = Report::new();
+
+    match (left_iter, right_iter) {
+        (GenomicRangesParser::Bed3(left), GenomicRangesParser::Bed3(right)) => {
+
+            let left_gr = GRangesEmpty::from_iter(left, &genome)?; let right_gr =
+                GRangesEmpty::from_iter(right, &genome)?;
+
+            let right_gr = right_gr.to_coitrees()?;
+
+            let intersection = left_gr.filter_overlaps(&right_gr)?;
+            intersection.to_tsv(output)?;
+
+            Ok(CommandOutput::new((), report))
+        }
+        (GenomicRangesParser::Bed3(left), GenomicRangesParser::Bedlike(right)) => {
+            Ok(CommandOutput::new((), report))
+        }
+        (GenomicRangesParser::Bedlike(left), GenomicRangesParser::Bed3(right)) => {
+            Ok(CommandOutput::new((), report))
+        }
+        (GenomicRangesParser::Bedlike(left), GenomicRangesParser::Bedlike(right)) => {
+            Ok(CommandOutput::new((), report))
+        }
+        _ => Ok(CommandOutput::new((), report)),
+    }
+}
 
 /// Generate a random BED-like file with genomic ranges.
 pub fn granges_random_bed(

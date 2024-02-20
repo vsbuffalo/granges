@@ -145,7 +145,7 @@ fn valid_bedlike(input_file: &mut InputFile) -> Result<bool, GRangesError> {
 
 /// Enum that connects a genomic ranges file type to its specific parser.
 #[derive(Debug)]
-pub enum GenomicRangesParsers {
+pub enum GenomicRangesParser {
     Bed3(Bed3Iterator),
     Bedlike(BedlikeIterator),
     Unsupported,
@@ -215,14 +215,14 @@ impl GenomicRangesFile {
     /// 
     /// This returns a [`GenomicRangesParsers`] enum, since the parsing iterator filetype 
     /// cannot be known at compile time.
-    pub fn parsing_iterator(filepath: impl Clone + Into<PathBuf>) -> Result<GenomicRangesParsers, GRangesError> {
+    pub fn parsing_iterator(filepath: impl Clone + Into<PathBuf>) -> Result<GenomicRangesParser, GRangesError> {
         let path = filepath.into();
         dbg!(&path);
         match Self::detect(path)? {
             GenomicRangesFile::Bed3(path) =>
-                Ok(GenomicRangesParsers::Bed3(Bed3Iterator::new(path)?)),
+                Ok(GenomicRangesParser::Bed3(Bed3Iterator::new(path)?)),
             GenomicRangesFile::Bedlike(path) => 
-                Ok(GenomicRangesParsers::Bedlike(BedlikeIterator::new(path)?)),
+                Ok(GenomicRangesParser::Bedlike(BedlikeIterator::new(path)?)),
             GenomicRangesFile::Unsupported => {
                 Err(GRangesError::UnsupportedGenomicRangesFileFormat)
             }
