@@ -5,8 +5,7 @@ use granges::{
     prelude::GenomicRangesFile,
     test_utilities::{granges_binary_path, random_bedfile, temp_bedfile},
 };
-use std::{path::Path, process::Command};
-use tempfile::{Builder, NamedTempFile};
+use std::process::Command;
 
 #[test]
 fn test_random_bed3file_filetype_detect() {
@@ -54,7 +53,7 @@ fn test_against_bedtools_slop() {
 
     let granges_output = Command::new(granges_binary_path())
         .arg("adjust")
-        .arg("--seqlens")
+        .arg("--genome")
         .arg("tests_data/hg38_seqlens.tsv")
         .arg("--both")
         .arg(width.to_string())
@@ -74,7 +73,7 @@ fn test_against_bedtools_slop() {
 
 /// Test bedtools intersect -a <left> -b <right> -wa -u
 /// against
-/// granges filter --seqlens <genome> --left <left> --right <right>
+/// granges filter --genome <genome> --left <left> --right <right>
 #[test]
 fn test_against_bedtools_intersect_wa() {
     let num_ranges = 1_000_000;
@@ -109,7 +108,7 @@ fn test_against_bedtools_intersect_wa() {
 
     let granges_output = Command::new(granges_binary_path())
         .arg("filter")
-        .arg("--seqlens")
+        .arg("--genome")
         .arg("tests_data/hg38_seqlens.tsv")
         .arg("--left")
         .arg(&random_bedfile_left)

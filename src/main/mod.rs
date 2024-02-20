@@ -10,15 +10,19 @@ use granges::{
 #[cfg(feature = "dev-commands")]
 use granges::commands::granges_random_bed;
 
-const INFO: &str = "\
+const INFO: &str = r#"
 granges: genomic range operations built off of the GRanges library
 usage: granges [--help] <subcommand>
 
 Subcommands:
   
-  adjust: adjust each genomic range, e.g. to add a kilobase to each end.
- 
-";
+  adjust: Adjust each genomic range, e.g. to add a kilobase to each end.
+
+  filter: Filter the left ranges based on whether they have at least one
+          overlap with a right range. This is equivalent to a filtering
+          "semi-join" in SQL terminology. 
+          
+"#;
 
 #[derive(Parser)]
 #[clap(name = "granges")]
@@ -34,64 +38,69 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     Adjust {
-        /// a TSV genome file of chromosome names and their lengths
-        #[arg(long, required = true)]
-        seqlens: PathBuf,
+        /// A TSV genome file of chromosome names and their lengths
+        #[arg(short, long, required = true)]
+        genome: PathBuf,
 
-        /// an input BED-like TSV file
+        /// An input BED-like TSV file
         #[arg(required = true)]
         bedfile: PathBuf,
 
-        /// number of basepairs to expand the range start and end positions by
-        #[arg(long)]
+        /// Number of basepairs to expand the range start and end positions by
+        #[arg(short, long)]
         both: PositionOffset,
 
-        /// an optional output file (standard output will be used if not specified)
-        #[arg(long)]
+        /// An optional output file (standard output will be used if not specified)
+        #[arg(short, long)]
         output: Option<PathBuf>,
 
-        /// sort the ranges after adjusting their start and end positions
-        #[arg(long)]
+        /// Sort the ranges after adjusting their start and end positions
+        #[arg(short, long)]
         sort: bool,
     },
     Filter {
-        /// a TSV genome file of chromosome names and their lengths
-        #[arg(long, required = true)]
-        seqlens: PathBuf,
+        /// A TSV genome file of chromosome names and their lengths
+        #[arg(short, long, required = true)]
+        genome: PathBuf,
 
-        /// the "left" BED-like TSV file
-        #[arg(long, required = true)]
+        /// The "left" BED-like TSV file
+        #[arg(short, long, required = true)]
         left: PathBuf,
 
-        /// the "right" BED-like TSV file
-        #[arg(long, required = true)]
+        /// The "right" BED-like TSV file
+        #[arg(short, long, required = true)]
         right: PathBuf,
 
-        /// an optional output file (standard output will be used if not specified)
-        #[arg(long)]
+        /// An optional output file (standard output will be used if not specified)
+        #[arg(short, long)]
         output: Option<PathBuf>,
 
-        /// sort the ranges after adjusting their start and end positions
-        #[arg(long)]
+        /// Sort the ranges after adjusting their start and end positions
+        #[arg(short, long)]
         sort: bool,
+
+        /// Skip ranges from sequences (e.g. chromosomes) not present in the genome file.
+        /// By default, ranges with sequence names not in the genome file will raise an error.
+        #[arg(short = 'f', long)]
+        skip_missing: bool,
     },
 
     #[cfg(feature = "dev-commands")]
     RandomBed {
         /// a TSV genome file of chromosome names and their lengths
         #[arg(required = true)]
-        seqlens: PathBuf,
+        genome: PathBuf,
 
         /// number of random ranges to generate
-        #[arg(long, required = true)]
+        #[arg(short, long, required = true)]
         num: usize,
 
         /// an optional output file (standard output will be used if not specified)
-        #[arg(long)]
+        #[arg(short, long)]
         output: Option<PathBuf>,
 
         /// sort the ranges
-        #[arg(long)]
+        #[arg(short, long)]
         sort: bool,
     },
 }
@@ -101,25 +110,26 @@ fn run() -> Result<(), GRangesError> {
     let result = match &cli.command {
         Some(Commands::Adjust {
             bedfile,
-            seqlens,
+            genome,
             both,
             output,
             sort,
-        }) => granges_adjust(bedfile, seqlens, *both, output.as_ref(), *sort),
+        }) => granges_adjust(bedfile, genome, *both, output.as_ref(), *sort),
         Some(Commands::Filter {
-            seqlens,
+            genome,
             left,
             right,
             output,
             sort,
-        }) => granges_filter(seqlens, left, right, output.as_ref(), *sort),
+            skip_missing,
+        }) => granges_filter(genome, left, right, output.as_ref(), *skip_missing, *sort),
         #[cfg(feature = "dev-commands")]
         Some(Commands::RandomBed {
-            seqlens,
+            genome,
             num,
             output,
             sort,
-        }) => granges_random_bed(seqlens, *num, output.as_ref(), *sort),
+        }) => granges_random_bed(genome, *num, output.as_ref(), *sort),
         None => {
             println!("{}\n", INFO);
             std::process::exit(1);

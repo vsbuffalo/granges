@@ -34,7 +34,7 @@ pub enum GRangesError {
     InvalidGenomicRange(Position, Position),
     #[error("Range [{0}, {1}] is invalid for sequence of length {2}")]
     InvalidGenomicRangeForSequence(Position, Position, Position),
-    #[error("Sequence name '{0}' is not the ranges container")]
+    #[error("Sequence name '{0}' is not in the ranges container")]
     MissingSequence(String),
     #[error("Error encountered in genomap::GenomeMap")]
     GenomeMapError(#[from] GenomeMapError),

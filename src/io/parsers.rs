@@ -77,7 +77,7 @@ use std::path::{Path, PathBuf};
 use crate::error::GRangesError;
 use crate::io::file::InputFile;
 use crate::ranges::{GenomicRangeEmptyRecord, GenomicRangeRecord};
-use crate::traits::GeneralRangeRecordIterator;
+use crate::traits::{GeneralRangeRecordIterator, GenomicRangeRecordUnwrappable};
 use crate::Position;
 
 /// Get the *base* extension to help infer filetype, which ignores compression-related
@@ -365,37 +365,10 @@ impl BedlikeIterator {
         self.number_columns() == 3
     }
 
-    /// Try to unwrap each [`GenomicRangeRecord<Option<String>>`] iterator item into a
-    /// [`GenomicRangeRecord<String>`] iterator item.
-    ///
-    /// This will raise errors if:
-    ///  1. The detected number of columns is < 4 (i.e. there appears to be no data to unwrap).
-    ///  2. During iteration, a `None` data element is encountered.
-    pub fn try_unwrap_data(
-        self,
-    ) -> Result<impl Iterator<Item = Result<GenomicRangeRecord<String>, GRangesError>>, GRangesError>
-    {
-        if self.number_columns() < 4 {
-            return Err(GRangesError::TooFewColumns)?;
-        }
-        Ok(self.iter.map(|result| {
-            result.and_then(|record| {
-                if let Some(data) = record.data {
-                    Ok(GenomicRangeRecord::new(
-                        record.seqname,
-                        record.start,
-                        record.end,
-                        data,
-                    ))
-                } else {
-                    Err(GRangesError::TryUnwrapDataError)
-                }
-            })
-        }))
-    }
-
     /// Drop the data in each [`GenomicRangeRecord<Option<String>>`] iterator, converting it to a range-only
     /// [`GenomicRangeRecord<()>`] iterator item.
+    // TODO: candidate for trait? the impl Iterator isn't a concrete type and can be cumbersome
+    // in terms of ergonomics. See UnwrappedRanges for an example.
     pub fn drop_data(self) -> impl Iterator<Item = Result<GenomicRangeRecord<()>, GRangesError>> {
         self.iter.map(|result| {
             result
@@ -409,37 +382,6 @@ impl BedlikeIterator {
                 })
                 .unwrap_or_else(Err) // pass through parsing errors
         })
-    }
-
-    /// Try to convert the iterator into one of two variants: one with data and one without.
-    pub fn into_variant(self) -> Result<GenomicRangesIteratorVariant, GRangesError> {
-        let number_columns = self.number_columns();
-
-        if number_columns == 3 {
-            let without_data_iterator = self.drop_data().map(|result| {
-                result.map(|record| GenomicRangeRecord {
-                    seqname: record.seqname,
-                    start: record.start,
-                    end: record.end,
-                    data: (),
-                })
-            });
-            Ok(GenomicRangesIteratorVariant::Empty(Box::new(
-                without_data_iterator,
-            )))
-        } else {
-            let with_data_iterator = self.try_unwrap_data()?.map(|result| {
-                result.map(|record| GenomicRangeRecord {
-                    seqname: record.seqname,
-                    start: record.start,
-                    end: record.end,
-                    data: record.data,
-                })
-            });
-            Ok(GenomicRangesIteratorVariant::WithData(Box::new(
-                with_data_iterator,
-            )))
-        }
     }
 }
 
@@ -465,7 +407,7 @@ impl Iterator for BedlikeIterator {
 ///
 /// let iter = Bed3Iterator::new("tests_data/example.bed")
 ///            .expect("error reading file")
-///            .exclude_seqnames(vec!["chr1".to_string()]);
+///            .exclude_seqnames(&vec!["chr1".to_string()]);
 ///
 /// let seqlens = seqlens! { "chr1" => 22, "chr2" => 10, "chr3" => 10, "chr4" => 15 };
 /// let gr = GRangesEmpty::from_iter(iter, &seqlens)
@@ -479,6 +421,7 @@ impl Iterator for BedlikeIterator {
 /// assert_eq!(iter.next().unwrap().end, 15);
 /// assert_eq!(iter.next(), None);
 /// ```
+#[derive(Debug)]
 pub struct FilteredRanges<I, R>
 where
     I: Iterator<Item = Result<R, GRangesError>>,
@@ -494,11 +437,11 @@ where
 {
     pub fn new(
         inner: I,
-        retain_seqnames: Option<Vec<String>>,
-        exclude_seqnames: Option<Vec<String>>,
+        retain_seqnames: Option<&Vec<String>>,
+        exclude_seqnames: Option<&Vec<String>>,
     ) -> Self {
-        let retain_seqnames = retain_seqnames.map(HashSet::from_iter);
-        let exclude_seqnames = exclude_seqnames.map(HashSet::from_iter);
+        let retain_seqnames = retain_seqnames.cloned().map(HashSet::from_iter);
+        let exclude_seqnames = exclude_seqnames.cloned().map(HashSet::from_iter);
         Self {
             inner,
             retain_seqnames,
@@ -575,18 +518,93 @@ where
     }
 }
 
-impl GeneralRangeRecordIterator<GenomicRangeEmptyRecord> for Bed3Iterator {
+impl GeneralRangeRecordIterator<GenomicRangeRecord<Option<String>>> for BedlikeIterator {
     fn retain_seqnames(
         self,
-        seqnames: Vec<String>,
-    ) -> FilteredRanges<Self, GenomicRangeEmptyRecord> {
-        FilteredRanges::new(self, Some(seqnames), None)
+        seqnames: &[String],
+    ) -> FilteredRanges<Self, GenomicRangeRecord<Option<String>>> {
+        FilteredRanges::new(self, Some(&seqnames.to_vec()), None)
     }
     fn exclude_seqnames(
         self,
-        seqnames: Vec<String>,
+        seqnames: &[String],
+    ) -> FilteredRanges<Self, GenomicRangeRecord<Option<String>>> {
+        FilteredRanges::new(self, None, Some(&seqnames.to_vec()))
+    }
+}
+
+impl GeneralRangeRecordIterator<GenomicRangeEmptyRecord> for Bed3Iterator {
+    fn retain_seqnames(self, seqnames: &[String]) -> FilteredRanges<Self, GenomicRangeEmptyRecord> {
+        FilteredRanges::new(self, Some(&seqnames.to_vec()), None)
+    }
+    fn exclude_seqnames(
+        self,
+        seqnames: &[String],
     ) -> FilteredRanges<Self, GenomicRangeEmptyRecord> {
-        FilteredRanges::new(self, None, Some(seqnames))
+        FilteredRanges::new(self, None, Some(&seqnames.to_vec()))
+    }
+}
+
+impl<I> GeneralRangeRecordIterator<GenomicRangeRecord<String>> for UnwrappedRanges<I>
+where
+    I: Iterator<Item = Result<GenomicRangeRecord<Option<String>>, GRangesError>>,
+{
+    fn retain_seqnames(
+        self,
+        seqnames: &[String],
+    ) -> FilteredRanges<Self, GenomicRangeRecord<String>> {
+        FilteredRanges::new(self, Some(&seqnames.to_vec()), None)
+    }
+    fn exclude_seqnames(
+        self,
+        seqnames: &[String],
+    ) -> FilteredRanges<Self, GenomicRangeRecord<String>> {
+        FilteredRanges::new(self, None, Some(&seqnames.to_vec()))
+    }
+}
+
+#[derive(Debug)]
+pub struct UnwrappedRanges<I>
+where
+    I: Iterator<Item = Result<GenomicRangeRecord<Option<String>>, GRangesError>>,
+{
+    inner: I,
+}
+
+impl<I> UnwrappedRanges<I>
+where
+    I: Iterator<Item = Result<GenomicRangeRecord<Option<String>>, GRangesError>>,
+{
+    pub fn new(inner: I) -> Self {
+        Self { inner }
+    }
+}
+
+impl<I> Iterator for UnwrappedRanges<I>
+where
+    I: Iterator<Item = Result<GenomicRangeRecord<Option<String>>, GRangesError>>,
+{
+    type Item = Result<GenomicRangeRecord<String>, GRangesError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(result) = self.inner.next() {
+            return Some(result.and_then(|record| match record.data {
+                Some(data) => Ok(GenomicRangeRecord::new(
+                    record.seqname,
+                    record.start,
+                    record.end,
+                    data,
+                )),
+                None => Err(GRangesError::TryUnwrapDataError),
+            }));
+        }
+        None
+    }
+}
+
+impl GenomicRangeRecordUnwrappable for BedlikeIterator {
+    fn try_unwrap_data(self) -> UnwrappedRanges<Self> {
+        UnwrappedRanges::new(self)
     }
 }
 

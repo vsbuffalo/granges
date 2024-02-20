@@ -41,7 +41,7 @@ fn bench_range_adjustment(c: &mut Criterion) {
         b.iter(|| {
             let granges_output = Command::new(granges_binary_path())
                 .arg("adjust")
-                .arg("--seqlens")
+                .arg("--genome")
                 .arg("tests_data/hg38_seqlens.tsv")
                 .arg("--both")
                 .arg("10")
@@ -86,7 +86,7 @@ fn bench_filter_adjustment(c: &mut Criterion) {
         b.iter(|| {
             let granges_output = Command::new(granges_binary_path())
                 .arg("filter")
-                .arg("--seqlens")
+                .arg("--genome")
                 .arg("tests_data/hg38_seqlens.tsv")
                 .arg("--left")
                 .arg(&random_bedfile_left)

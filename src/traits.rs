@@ -3,7 +3,13 @@
 
 use std::path::PathBuf;
 
-use crate::{error::GRangesError, granges::GRanges, io::parsers::FilteredRanges, Position};
+use crate::{
+    error::GRangesError,
+    granges::GRanges,
+    io::parsers::{FilteredRanges, UnwrappedRanges},
+    ranges::GenomicRangeRecord,
+    Position,
+};
 
 /// Traits for [`GRanges`] types that can be modified.
 //pub trait GenomicRangesModifiableRanges<C: RangeContainer> {
@@ -86,8 +92,22 @@ pub trait DataContainer {}
 pub trait GeneralRangeRecordIterator<R: GenericRange>:
     Iterator<Item = Result<R, GRangesError>> + Sized
 {
-    fn retain_seqnames(self, seqnames: Vec<String>) -> FilteredRanges<Self, R>;
-    fn exclude_seqnames(self, seqnames: Vec<String>) -> FilteredRanges<Self, R>;
+    fn retain_seqnames(self, seqnames: &[String]) -> FilteredRanges<Self, R>;
+    fn exclude_seqnames(self, seqnames: &[String]) -> FilteredRanges<Self, R>;
+}
+
+/// [`GenomicRangeRecordUnwrappable`] defines functionality for unwrapping
+/// values from some sort of iterator over [`Result`] (to handle e.g. parsing errors)
+/// containing [`GenomicRangeRecord<Option<String>>`], turning them into
+/// [`GenomicRangeRecord<String>`] (i.e. "unwrapping" them).
+pub trait GenomicRangeRecordUnwrappable:
+    Iterator<Item = Result<GenomicRangeRecord<Option<String>>, GRangesError>> + Sized
+{
+    /// Try unwrapping a [`GenomicRangeRecord<Option<String>>`] into a
+    /// [`GenomicRangeRecord<String>`], raising a [`GRangesError::TryUnwrapDataError`] if
+    /// if a `None` is encountered. This is used in lazy parsing when we expect additional
+    /// data to be parsed, but there isn't any.
+    fn try_unwrap_data(self) -> UnwrappedRanges<Self>;
 }
 
 /// The [`IterableRangeContainer`] trait defines common functionality for iterating over

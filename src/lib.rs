@@ -32,8 +32,9 @@ pub mod prelude {
 
     pub use crate::ranges::vec::{VecRangesEmpty, VecRangesIndexed};
     pub use crate::traits::{
-        AsGRangesRef, GeneralRangeRecordIterator, GenericRange, GenomicRangesTsvSerialize,
-        IndexedDataContainer, IntoIterableRangesContainer, IterableRangeContainer, TsvSerialize,
+        AsGRangesRef, GeneralRangeRecordIterator, GenericRange, GenomicRangeRecordUnwrappable,
+        GenomicRangesTsvSerialize, IndexedDataContainer, IntoIterableRangesContainer,
+        IterableRangeContainer, TsvSerialize,
     };
 
     pub use crate::seqlens;
