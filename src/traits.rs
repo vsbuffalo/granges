@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use crate::{
-    error::GRangesError, granges::GRanges, io::parsers::FilteredRanges, Position, ranges::{coitrees::COITrees, vec::VecRanges},
+    error::GRangesError, granges::GRanges, io::parsers::FilteredRanges, Position,
 };
 
 /// Traits for [`GRanges`] types that can be modified.
@@ -13,8 +13,10 @@ use crate::{
 //}
 
 
-pub trait IntoGRangesRef<'a, C, T> {
-    fn into_granges_ref(&'a self) -> &'a GRanges<C, T>;
+/// The [`AsGRangesRef`] trait improves the ergonomics of working
+/// with both [`GRanges`] and [`GRangesEmpty`] function arguments. 
+pub trait AsGRangesRef<'a, C, T> {
+    fn as_granges_ref(&'a self) -> &'a GRanges<C, T>;
 }
 
 /// The [`GenomicRangesTsvSerialize`] trait defines how to convert a [`GRanges<R, T>`]
@@ -37,10 +39,8 @@ pub trait GenericRange: Clone {
     fn start(&self) -> Position;
     fn end(&self) -> Position;
     fn index(&self) -> Option<usize>;
-    fn set_start(&mut self, start: Position);
-    fn set_end(&mut self, end: Position);
     fn width(&self) -> Position {
-        return self.end() - self.start() - 1;
+        self.end() - self.start() - 1
     }
     /// Calculate how many basepairs overlap this range and other.
     fn overlap_width<R: GenericRange>(&self, other: &R) -> Position {
@@ -60,6 +60,14 @@ pub trait GenericRange: Clone {
             None
         }
     }
+}
+
+/// The [`AdjustableGenericRange`] trait extends addtion functionality to adjustable generic ranges.
+pub trait AdjustableGenericRange: GenericRange {
+    /// Set the start to the specified position.
+    fn set_start(&mut self, start: Position);
+    /// Set the end to the specified position.
+    fn set_end(&mut self, end: Position);
 }
 
 /// Defines functionality common to all range containers, e.g. [`VecRanges<R>`] and

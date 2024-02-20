@@ -29,7 +29,7 @@ impl<M: Clone> std::fmt::Debug for COITrees<M> {
         f.debug_struct("COITrees")
             .field("number of ranges:", &self.ranges.len())
             .field("length", &self.length)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -180,12 +180,6 @@ impl GenericRange for IntervalNode<(), usize> {
     fn index(&self) -> Option<usize> {
         None
     }
-    fn set_end(&mut self, end: Position) {
-        unimplemented!()
-    }
-    fn set_start(&mut self, start: Position) {
-        unimplemented!()
-    }
 }
 
 impl GenericRange for IntervalNode<usize, usize> {
@@ -197,12 +191,6 @@ impl GenericRange for IntervalNode<usize, usize> {
     }
     fn index(&self) -> Option<usize> {
         Some(*self.metadata())
-    }
-    fn set_end(&mut self, end: Position) {
-        unimplemented!()
-    }
-    fn set_start(&mut self, start: Position) {
-        unimplemented!()
     }
 }
 

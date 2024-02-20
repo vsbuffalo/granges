@@ -80,14 +80,6 @@ use crate::ranges::{GenomicRangeEmptyRecord, GenomicRangeRecord};
 use crate::traits::GeneralRangeRecordIterator;
 use crate::Position;
 
-/// Enum that indicates the filetype of some genomic ranges file.
-#[derive(Debug, PartialEq)]
-pub enum GenomicRangesFile {
-    Bed3(PathBuf),
-    Bedlike(PathBuf),
-    Unsupported,
-}
-
 /// Get the *base* extension to help infer filetype, which ignores compression-related
 /// extensions (`.gz` and `.bgz`).
 fn get_base_extension<P: AsRef<Path>>(filepath: P) -> Option<String> {
@@ -101,7 +93,7 @@ fn get_base_extension<P: AsRef<Path>>(filepath: P) -> Option<String> {
         .split('.')
         .collect();
 
-    let ignore_extensions = vec!["gz", "bgz"];
+    let ignore_extensions = ["gz", "bgz"];
 
     let has_ignore_extension = parts
         .last()
@@ -131,7 +123,7 @@ fn valid_bedlike(input_file: &mut InputFile) -> Result<bool, GRangesError> {
     reader.read_line(&mut first_line)?;
 
     let columns = first_line
-        .splitn(4, "\t")
+        .splitn(4, '\t')
         .map(String::from)
         .collect::<Vec<String>>();
 
@@ -143,14 +135,28 @@ fn valid_bedlike(input_file: &mut InputFile) -> Result<bool, GRangesError> {
     // Attempt to parse the second and third columns as positions
     let start_result = columns[1].trim().parse::<Position>();
     let end_result = columns[2].trim().parse::<Position>();
-    dbg!(&columns);
-    dbg!((&start_result, &end_result));
 
     // Check if both positions are valid
     match (start_result, end_result) {
         (Ok(_), Ok(_)) => Ok(true), // both are valid
         _ => Ok(false),             // one or both is not valid
     }
+}
+
+/// Enum that connects a genomic ranges file type to its specific parser.
+#[derive(Debug)]
+pub enum GenomicRangesParsers {
+    Bed3(Bed3Iterator),
+    Bedlike(BedlikeIterator),
+    Unsupported,
+}
+
+/// Enum that indicates the filetype of some genomic ranges file.
+#[derive(Debug, PartialEq)]
+pub enum GenomicRangesFile {
+    Bed3(PathBuf),
+    Bedlike(PathBuf),
+    Unsupported,
 }
 
 impl GenomicRangesFile {
@@ -194,7 +200,6 @@ impl GenomicRangesFile {
 
         // test if the first row can be parsed into a BED-like file format.
         let is_valid_bedlike = valid_bedlike(&mut input_file)?;
-        dbg!(extension.as_str(), number_columns, is_valid_bedlike);
         let file_type = match (extension.as_str(), number_columns, is_valid_bedlike) {
             ("bed", 3, true) => GenomicRangesFile::Bed3(path),
             ("tsv", 3, true) => GenomicRangesFile::Bed3(path),
@@ -205,8 +210,26 @@ impl GenomicRangesFile {
         Ok(file_type)
     }
 
-
+    /// Detect the genomic range filetype and link it to its parsing iterator, or raise an error 
+    /// if the filetype is not supported.
+    /// 
+    /// This returns a [`GenomicRangesParsers`] enum, since the parsing iterator filetype 
+    /// cannot be known at compile time.
+    pub fn parsing_iterator(filepath: impl Clone + Into<PathBuf>) -> Result<GenomicRangesParsers, GRangesError> {
+        let path = filepath.into();
+        dbg!(&path);
+        match Self::detect(path)? {
+            GenomicRangesFile::Bed3(path) =>
+                Ok(GenomicRangesParsers::Bed3(Bed3Iterator::new(path)?)),
+            GenomicRangesFile::Bedlike(path) => 
+                Ok(GenomicRangesParsers::Bedlike(BedlikeIterator::new(path)?)),
+            GenomicRangesFile::Unsupported => {
+                Err(GRangesError::UnsupportedGenomicRangesFileFormat)
+            }
+        }
+    }
 }
+
 
 /// An extensible TSV parser, which uses a supplied parser function to
 /// convert a line into a [`RangeRecord<U>`], a range with generic associated
@@ -218,9 +241,15 @@ pub struct TsvRecordIterator<F, R> {
     phantom: PhantomData<R>,
 }
 
+impl<F, R> std::fmt::Debug for TsvRecordIterator<F, R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TsvRecordIterator").finish_non_exhaustive()
+    }
+}
+
 impl<F, R> TsvRecordIterator<F, R>
 where
-    F: Fn(&str) -> Result<R, GRangesError>,
+F: Fn(&str) -> Result<R, GRangesError>,
 {
     /// Create a new [`TsvRecordIterator`], which parses lines from the supplied
     /// file path into [`RangeRecord<U>`] using the specified parsing function.
@@ -241,7 +270,7 @@ where
 
 impl<F, R> Iterator for TsvRecordIterator<F, R>
 where
-    F: Fn(&str) -> Result<R, GRangesError>,
+F: Fn(&str) -> Result<R, GRangesError>,
 {
     type Item = Result<R, GRangesError>;
 
@@ -269,11 +298,12 @@ pub enum GenomicRangesIteratorVariant {
 /// string columns to parse.
 ///
 #[allow(clippy::type_complexity)]
+#[derive(Debug)]
 pub struct Bed3Iterator {
     iter: TsvRecordIterator<
         fn(&str) -> Result<GenomicRangeEmptyRecord, GRangesError>,
         GenomicRangeEmptyRecord,
-    >,
+        >,
 }
 
 impl Bed3Iterator {
@@ -303,11 +333,12 @@ impl Iterator for Bed3Iterator {
 /// string columns to parse.
 ///
 #[allow(clippy::type_complexity)]
+#[derive(Debug)]
 pub struct BedlikeIterator {
     iter: TsvRecordIterator<
         fn(&str) -> Result<GenomicRangeRecord<Option<String>>, GRangesError>,
         GenomicRangeRecord<Option<String>>,
-    >,
+        >,
 }
 
 impl BedlikeIterator {
@@ -342,7 +373,7 @@ impl BedlikeIterator {
     ///  2. During iteration, a `None` data element is encountered.
     pub fn try_unwrap_data(
         self,
-    ) -> Result<impl Iterator<Item = Result<GenomicRangeRecord<String>, GRangesError>>, GRangesError>
+        ) -> Result<impl Iterator<Item = Result<GenomicRangeRecord<String>, GRangesError>>, GRangesError>
     {
         if self.number_columns() < 4 {
             return Err(GRangesError::TooFewColumns)?;
@@ -351,11 +382,11 @@ impl BedlikeIterator {
             result.and_then(|record| {
                 if let Some(data) = record.data {
                     Ok(GenomicRangeRecord::new(
-                        record.seqname,
-                        record.start,
-                        record.end,
-                        data,
-                    ))
+                            record.seqname,
+                            record.start,
+                            record.end,
+                            data,
+                            ))
                 } else {
                     Err(GRangesError::TryUnwrapDataError)
                 }
@@ -370,13 +401,13 @@ impl BedlikeIterator {
             result
                 .map(|record| {
                     Ok(GenomicRangeRecord::new(
-                        record.seqname,
-                        record.start,
-                        record.end,
-                        (),
-                    ))
+                            record.seqname,
+                            record.start,
+                            record.end,
+                            (),
+                            ))
                 })
-                .unwrap_or_else(|e| Err(e)) // pass through parsing errors
+            .unwrap_or_else(Err) // pass through parsing errors
         })
     }
 
@@ -394,8 +425,8 @@ impl BedlikeIterator {
                 })
             });
             Ok(GenomicRangesIteratorVariant::Empty(Box::new(
-                without_data_iterator,
-            )))
+                        without_data_iterator,
+                        )))
         } else {
             let with_data_iterator = self.try_unwrap_data()?.map(|result| {
                 result.map(|record| GenomicRangeRecord {
@@ -406,8 +437,8 @@ impl BedlikeIterator {
                 })
             });
             Ok(GenomicRangesIteratorVariant::WithData(Box::new(
-                with_data_iterator,
-            )))
+                        with_data_iterator,
+                        )))
         }
     }
 }
@@ -450,7 +481,7 @@ impl Iterator for BedlikeIterator {
 /// ```
 pub struct FilteredRanges<I, R>
 where
-    I: Iterator<Item = Result<R, GRangesError>>,
+I: Iterator<Item = Result<R, GRangesError>>,
 {
     inner: I,
     retain_seqnames: Option<HashSet<String>>,
@@ -459,13 +490,13 @@ where
 
 impl<I, R> FilteredRanges<I, R>
 where
-    I: Iterator<Item = Result<R, GRangesError>>,
+I: Iterator<Item = Result<R, GRangesError>>,
 {
     pub fn new(
         inner: I,
         retain_seqnames: Option<Vec<String>>,
         exclude_seqnames: Option<Vec<String>>,
-    ) -> Self {
+        ) -> Self {
         let retain_seqnames = retain_seqnames.map(HashSet::from_iter);
         let exclude_seqnames = exclude_seqnames.map(HashSet::from_iter);
         Self {
@@ -479,7 +510,7 @@ where
 /// Range-filtering iterator implementation for [`GenomicRangeRecord<U>`].
 impl<I, U> Iterator for FilteredRanges<I, GenomicRangeRecord<U>>
 where
-    I: Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>>,
+I: Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>>,
 {
     type Item = Result<GenomicRangeRecord<U>, GRangesError>;
 
@@ -490,18 +521,18 @@ where
                 Ok(entry) => {
                     if self
                         .exclude_seqnames
-                        .as_ref()
-                        .map_or(false, |ex| ex.contains(&entry.seqname))
-                    {
-                        continue;
-                    }
+                            .as_ref()
+                            .map_or(false, |ex| ex.contains(&entry.seqname))
+                            {
+                                continue;
+                            }
                     if self
                         .retain_seqnames
-                        .as_ref()
-                        .map_or(true, |rt| rt.contains(&entry.seqname))
-                    {
-                        return Some(item);
-                    }
+                            .as_ref()
+                            .map_or(true, |rt| rt.contains(&entry.seqname))
+                            {
+                                return Some(item);
+                            }
                 }
                 Err(_) => return Some(item),
             }
@@ -513,7 +544,7 @@ where
 /// Range-filtering iterator implementation for [`GenomicRangeEmptyRecord`].
 impl<I> Iterator for FilteredRanges<I, GenomicRangeEmptyRecord>
 where
-    I: Iterator<Item = Result<GenomicRangeEmptyRecord, GRangesError>>,
+I: Iterator<Item = Result<GenomicRangeEmptyRecord, GRangesError>>,
 {
     type Item = Result<GenomicRangeEmptyRecord, GRangesError>;
 
@@ -524,18 +555,18 @@ where
                 Ok(entry) => {
                     if self
                         .exclude_seqnames
-                        .as_ref()
-                        .map_or(false, |ex| ex.contains(&entry.seqname))
-                    {
-                        continue;
-                    }
+                            .as_ref()
+                            .map_or(false, |ex| ex.contains(&entry.seqname))
+                            {
+                                continue;
+                            }
                     if self
                         .retain_seqnames
-                        .as_ref()
-                        .map_or(true, |rt| rt.contains(&entry.seqname))
-                    {
-                        return Some(item);
-                    }
+                            .as_ref()
+                            .map_or(true, |rt| rt.contains(&entry.seqname))
+                            {
+                                return Some(item);
+                            }
                 }
                 Err(_) => return Some(item),
             }
@@ -548,13 +579,13 @@ impl GeneralRangeRecordIterator<GenomicRangeEmptyRecord> for Bed3Iterator {
     fn retain_seqnames(
         self,
         seqnames: Vec<String>,
-    ) -> FilteredRanges<Self, GenomicRangeEmptyRecord> {
+        ) -> FilteredRanges<Self, GenomicRangeEmptyRecord> {
         FilteredRanges::new(self, Some(seqnames), None)
     }
     fn exclude_seqnames(
         self,
         seqnames: Vec<String>,
-    ) -> FilteredRanges<Self, GenomicRangeEmptyRecord> {
+        ) -> FilteredRanges<Self, GenomicRangeEmptyRecord> {
         FilteredRanges::new(self, None, Some(seqnames))
     }
 }
@@ -578,7 +609,7 @@ impl GeneralRangeRecordIterator<GenomicRangeEmptyRecord> for Bed3Iterator {
 /// Returns `GRangesError::InvalidColumnType` if the column cannot be parsed into type `T`.
 pub fn parse_column<T: std::str::FromStr>(column: &str, line: &str) -> Result<T, GRangesError>
 where
-    <T as std::str::FromStr>::Err: std::fmt::Debug,
+<T as std::str::FromStr>::Err: std::fmt::Debug,
 {
     // NOTE: this is used a lot, and should be benchmarked.
     column
@@ -694,15 +725,15 @@ mod tests {
     fn test_rangefiletype_detect() {
         let range_filetype = GenomicRangesFile::detect("tests_data/example.bed");
         assert!(matches!(
-            range_filetype.unwrap(),
-            GenomicRangesFile::Bed3(_)
-        ));
+                range_filetype.unwrap(),
+                GenomicRangesFile::Bed3(_)
+                ));
 
         let range_filetype = GenomicRangesFile::detect("tests_data/example_bedlike.tsv");
         assert!(matches!(
-            range_filetype.unwrap(),
-            GenomicRangesFile::Bedlike(_)
-        ));
+                range_filetype.unwrap(),
+                GenomicRangesFile::Bedlike(_)
+                ));
     }
 
     #[test]
@@ -710,11 +741,11 @@ mod tests {
         assert_eq!(
             valid_bedlike(&mut InputFile::new("tests_data/example.bed")).unwrap(),
             true
-        );
+            );
         assert_eq!(
             valid_bedlike(&mut InputFile::new("tests_data/invalid_format.bed")).unwrap(),
             false
-        );
+            );
     }
 
     //#[test]

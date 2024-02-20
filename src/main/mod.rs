@@ -116,6 +116,7 @@ fn run() -> Result<(), GRangesError> {
             sort,
         }) => {
             let genome = read_seqlens(seqlens)?;
+            let mut report = Report::new();
 
             let left_filetype = GenomicRangesFile::detect(left)?;
             let right_filetype = GenomicRangesFile::detect(right)?;
@@ -144,18 +145,15 @@ fn run() -> Result<(), GRangesError> {
                     Ok(CommandOutput::new((), report))
                 }
                 (GenomicRangesFile::Bed3(left_file), GenomicRangesFile::Bedlike(right_file)) => {
-                    let mut report = Report::new();
                     Ok(CommandOutput::new((), report))
                 }
                 (GenomicRangesFile::Bedlike(left_file), GenomicRangesFile::Bed3(right_file)) => {
-                    let mut report = Report::new();
                     Ok(CommandOutput::new((), report))
                 }
                 (GenomicRangesFile::Bedlike(left_file), GenomicRangesFile::Bedlike(right_file)) => {
-                    let mut report = Report::new();
                     Ok(CommandOutput::new((), report))
                 }
-                _ => return Err(GRangesError::UnsupportedGenomicRangesFileFormat),
+                _ => Ok(CommandOutput::new((), report)),
             }
             // granges_filter(left, right, output.as_ref(), *sort)
         }

@@ -4,7 +4,7 @@
 
 use crate::{
     error::GRangesError,
-    traits::{GenericRange, IndexedDataContainer, TsvSerialize},
+    traits::{GenericRange, IndexedDataContainer, TsvSerialize, AdjustableGenericRange},
     Position,
 };
 
@@ -39,6 +39,9 @@ impl GenericRange for RangeEmpty {
     fn index(&self) -> Option<usize> {
         None
     }
+}
+
+impl AdjustableGenericRange for RangeEmpty {
     fn set_start(&mut self, start: Position) {
         self.start = start
     }
@@ -77,6 +80,9 @@ impl GenericRange for RangeIndexed {
     fn index(&self) -> Option<usize> {
         Some(self.index)
     }
+}
+
+impl AdjustableGenericRange for RangeIndexed {
     fn set_start(&mut self, start: Position) {
         self.start = start
     }
@@ -119,6 +125,9 @@ impl<U: Clone> GenericRange for GenomicRangeRecord<U> {
     fn index(&self) -> Option<usize> {
         None
     }
+}
+
+impl<U: Clone> AdjustableGenericRange for GenomicRangeRecord<U> {
     fn set_start(&mut self, start: Position) {
         self.start = start
     }
@@ -126,6 +135,8 @@ impl<U: Clone> GenericRange for GenomicRangeRecord<U> {
         self.end = end
     }
 }
+
+
 
 impl TsvSerialize for GenomicRangeRecord<()> {
     fn to_tsv(&self) -> String {
@@ -146,23 +157,23 @@ impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<Option<U>> {
                     self.start,
                     self.end,
                     data.to_tsv()
-                )
+                    )
             }
         }
     }
 }
-
-impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<U> {
-    fn to_tsv(&self) -> String {
-        format!(
-            "{}\t{}\t{}\t{}",
-            self.seqname,
-            self.start,
-            self.end,
-            self.data.to_tsv()
-        )
-    }
-}
+//
+// impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<U> {
+//     fn to_tsv(&self) -> String {
+//         format!(
+//             "{}\t{}\t{}\t{}",
+//             self.seqname,
+//             self.start,
+//             self.end,
+//             self.data.to_tsv()
+//         )
+//     }
+// }
 
 /// Represents a genomic range entry without data, e.g. from a BED3 parser.
 #[derive(Debug, Clone, PartialEq)]
@@ -193,6 +204,10 @@ impl GenericRange for GenomicRangeEmptyRecord {
     fn index(&self) -> Option<usize> {
         None
     }
+}
+
+
+impl AdjustableGenericRange for GenomicRangeEmptyRecord {
     fn set_start(&mut self, start: Position) {
         self.start = start
     }
@@ -224,19 +239,19 @@ impl GenomicRangeIndexedRecord {
         self,
         seqnames: &[String],
         data: Option<&'a T>,
-    ) -> GenomicRangeRecord<Option<<T as IndexedDataContainer<'a>>::Item>>
-    where
+        ) -> GenomicRangeRecord<Option<<T as IndexedDataContainer<'a>>::Item>>
+        where
         T: IndexedDataContainer<'a> + TsvSerialize,
-    {
-        let data = data.and_then(|data_ref| self.index.map(|idx| data_ref.get_value(idx)));
+        {
+            let data = data.and_then(|data_ref| self.index.map(|idx| data_ref.get_value(idx)));
 
-        GenomicRangeRecord {
-            seqname: seqnames[self.seqname_index].clone(),
-            start: self.start,
-            end: self.end,
-            data,
+            GenomicRangeRecord {
+                seqname: seqnames[self.seqname_index].clone(),
+                start: self.start,
+                end: self.end,
+                data,
+            }
         }
-    }
     pub fn to_record_empty<T>(self, seqnames: &[String]) -> GenomicRangeRecord<()> {
         GenomicRangeRecord {
             seqname: seqnames[self.seqname_index].clone(),
@@ -257,6 +272,9 @@ impl GenericRange for GenomicRangeIndexedRecord {
     fn index(&self) -> Option<usize> {
         self.index
     }
+}
+
+impl AdjustableGenericRange for GenomicRangeIndexedRecord {
     fn set_start(&mut self, start: Position) {
         self.start = start
     }
@@ -279,15 +297,15 @@ pub fn validate_range(
     start: Position,
     end: Position,
     length: Position,
-) -> Result<(), GRangesError> {
+    ) -> Result<(), GRangesError> {
     if start > end {
         return Err(GRangesError::InvalidGenomicRange(start, end));
     }
 
     if end >= length {
         return Err(GRangesError::InvalidGenomicRangeForSequence(
-            start, end, length,
-        ));
+                start, end, length,
+                ));
     }
     Ok(())
 }
@@ -301,9 +319,9 @@ mod tests {
     fn test_invalid_range_start_end() {
         let result = validate_range(5, 1, 10);
         assert!(matches!(
-            result,
-            Err(GRangesError::InvalidGenomicRange(5, 1))
-        ));
+                result,
+                Err(GRangesError::InvalidGenomicRange(5, 1))
+                ));
     }
 
     #[test]
@@ -316,9 +334,9 @@ mod tests {
     fn test_invalid_range_length() {
         let result = validate_range(1, 10, 10);
         assert!(matches!(
-            result,
-            Err(GRangesError::InvalidGenomicRangeForSequence(1, 10, 10))
-        ));
+                result,
+                Err(GRangesError::InvalidGenomicRangeForSequence(1, 10, 10))
+                ));
     }
 
     #[test]

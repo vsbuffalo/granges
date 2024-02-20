@@ -1,6 +1,6 @@
 use super::operations::adjust_range;
 use super::{validate_range, RangeEmpty, RangeIndexed};
-use crate::traits::{GenericRange, IntoIterableRangesContainer, IterableRangeContainer};
+use crate::traits::{GenericRange, IntoIterableRangesContainer, IterableRangeContainer, AdjustableGenericRange};
 use crate::PositionOffset;
 use crate::{error::GRangesError, traits::RangeContainer, Position};
 
@@ -53,10 +53,12 @@ impl<R: GenericRange> VecRanges<R> {
                 .then_with(|| a.index().cmp(&b.index()))
         });
     }
+}
 
+impl<R: AdjustableGenericRange> VecRanges<R> {
     /// Adjust all the ranges in this [`VecRanges`] range container.
     pub fn adjust_ranges(&mut self, start_delta: PositionOffset, end_delta: PositionOffset) {
-        let mut ranges = std::mem::replace(&mut self.ranges, Vec::new());
+        let mut ranges = std::mem::take(&mut self.ranges);
 
         ranges = ranges
             .into_iter()

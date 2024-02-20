@@ -48,7 +48,7 @@ fn is_gzipped_file(file_path: impl Into<PathBuf>) -> io::Result<bool> {
 /// This struct is used to handle operations on an input file, such as reading from the file.
 /// This abstracts how data is read in, allowing for both plaintext and gzip-compressed input
 /// to be read through a common interface.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct InputFile {
     pub filepath: PathBuf,
     pub comments: Option<Vec<String>>,

@@ -62,7 +62,7 @@ use genomap::GenomeMap;
 use indexmap::IndexMap;
 
 use crate::{
-    io::{parsers::GenomicRangesIteratorVariant, OutputFile},
+    io::{OutputFile},
     iterators::GRangesIterator,
     prelude::GRangesError,
     ranges::{
@@ -72,7 +72,7 @@ use crate::{
     },
     traits::{
         GenericRange, GenomicRangesTsvSerialize,
-        IndexedDataContainer, RangeContainer, IterableRangeContainer, TsvSerialize, IntoGRangesRef, 
+        IndexedDataContainer, RangeContainer, IterableRangeContainer, TsvSerialize, AsGRangesRef, AdjustableGenericRange, 
     },
     Position, PositionOffset,
 };
@@ -121,28 +121,28 @@ where
     }
 }
 
-impl<C> Into<GRanges<C, ()>> for GRangesEmpty<C> {
-    fn into(self) -> GRanges<C, ()> {
-        self.0
+impl<C> From<GRangesEmpty<C>> for GRanges<C, ()> {
+    fn from(value: GRangesEmpty<C>) -> Self {
+        value.0
     }
 }
 
-impl<'a, C> IntoGRangesRef<'a, C, ()> for GRangesEmpty<C> {
+impl<'a, C> AsGRangesRef<'a, C, ()> for GRangesEmpty<C> {
     /// Convert a reference to a [`GRangesEmpty<C>`] to a reference to the 
     /// underlying [`GRanges<C, ()>`]. This is to greatly improve the ergonomics
     /// of functions that could take either a [`GRanges`] or [`GRangesEmpty] type.
-    fn into_granges_ref(&'a self) -> &'a GRanges<C, ()> {
+    fn as_granges_ref(&'a self) -> &'a GRanges<C, ()> {
         &self.0
     }
 }
 
-impl<'a, C, T> IntoGRangesRef<'a, C, T> for GRanges<C, T> {
+impl<'a, C, T> AsGRangesRef<'a, C, T> for GRanges<C, T> {
     /// Return a reference of a [`GRanges<C, T>`] object. This is essentially
     /// a pass-through method. [`IntoGRangesRef`] is not needed in this case,
     /// but is needed elsewhere (see the implementation for [`GRangesEmpty`]) to 
     /// improve the ergonomics of working with [`GRanges`] and [`GRangesEmpty`] types.
-    fn into_granges_ref(&'a self) -> &'a GRanges<C, T> {
-        &self
+    fn as_granges_ref(&'a self) -> &'a GRanges<C, T> {
+        self
     }
 }
 
@@ -251,7 +251,14 @@ impl<R: GenericRange, T> GRanges<VecRanges<R>, T> {
         self.ranges.values_mut().for_each(|ranges| ranges.sort());
         self
     }
+   
+    pub fn shink(&mut self) {
+        todo!()
+    }
+}
 
+
+impl<R: AdjustableGenericRange, T> GRanges<VecRanges<R>, T> {
     /// Adjust all the ranges in this [`GRanges`] object in place.
     pub fn adjust_ranges(mut self, start_delta: PositionOffset, end_delta: PositionOffset) -> Self {
         self.ranges
@@ -259,12 +266,8 @@ impl<R: GenericRange, T> GRanges<VecRanges<R>, T> {
             .for_each(|ranges| ranges.adjust_ranges(start_delta, end_delta));
         self
     }
-    
-    pub fn shink(&mut self) {
-        todo!()
-    }
 }
-
+ 
 
 impl<R: GenericRange> GRangesEmpty<VecRanges<R>> {
     /// Create a new [`GRangesEmpty`] object, with vector storage for ranges and no 
@@ -273,18 +276,20 @@ impl<R: GenericRange> GRangesEmpty<VecRanges<R>> {
         GRangesEmpty(GRanges::new_vec(seqlens))
     }
 
-    pub fn sort(mut self) -> Self {
+    pub fn sort(self) -> Self {
         GRangesEmpty(self.0.sort())
-    }
-
-    pub fn adjust_ranges(mut self, start_delta: PositionOffset, end_delta: PositionOffset) -> Self {
-        GRangesEmpty(self.0.adjust_ranges(start_delta, end_delta))
     }
 
     pub fn shink(&mut self) {
         todo!()
     }
 } 
+
+impl<R: AdjustableGenericRange> GRangesEmpty<VecRanges<R>> {
+    pub fn adjust_ranges(self, start_delta: PositionOffset, end_delta: PositionOffset) -> Self {
+        GRangesEmpty(self.0.adjust_ranges(start_delta, end_delta))
+    }
+}
 
 impl<U> GRanges<VecRangesIndexed, Vec<U>> {
     /// Push a genomic range with its data to the range and data containers in a [`GRanges] object.
@@ -395,14 +400,14 @@ impl<T> GRanges<VecRanges<RangeIndexed>, T> {
 impl<U> GRanges<VecRangesIndexed, Vec<U>> {
     /// Create a new [`GRanges<VecRangesIndexed, Vec<U>>`] object from an iterator over
     /// [`GenomicRangeRecord<U>`] records.
-    pub fn from_iter_with_data<I>(
+    pub fn from_iter<I>(
         iter: I,
         seqlens: &IndexMap<String, Position>,
     ) -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError>
     where
         I: Iterator<Item = Result<GenomicRangeRecord<U>, GRangesError>>,
     {
-        let mut gr = GRanges::new_vec(&seqlens);
+        let mut gr = GRanges::new_vec(seqlens);
         for possible_entry in iter {
             let entry = possible_entry?;
             gr.push_range(&entry.seqname, entry.start, entry.end, entry.data)?;
@@ -421,7 +426,7 @@ impl GRangesEmpty<VecRangesEmpty> {
     where
         I: Iterator<Item = Result<GenomicRangeEmptyRecord, GRangesError>>,
     {
-        let mut gr = GRangesEmpty::new_vec(&seqlens);
+        let mut gr = GRangesEmpty::new_vec(seqlens);
         for possible_entry in iter {
             let entry = possible_entry?;
             gr.push_range(&entry.seqname, entry.start, entry.end)?;
@@ -484,15 +489,15 @@ where
     pub fn filter_overlaps<'a, M: Clone + 'a, DR: 'a>(
         self,
         // right: &GRanges<COITrees<M>, DR>,
-        right: &'a impl IntoGRangesRef<'a, COITrees<M>, DR>
+        right: &'a impl AsGRangesRef<'a, COITrees<M>, DR>
     ) -> Result<GRangesEmpty<VecRangesEmpty>, GRangesError> {
         let mut gr = GRangesEmpty::new_vec(&self.seqlens());
 
-        let right_ref = right.into_granges_ref();
+        let right_ref = right.as_granges_ref();
 
         for (seqname, left_ranges) in self.0.ranges.iter() {
             for left_range in left_ranges.iter_ranges() {
-                if let Some(right_ranges) = right_ref.ranges.get(&seqname) {
+                if let Some(right_ranges) = right_ref.ranges.get(seqname) {
                     let num_overlaps =
                         right_ranges.count_overlaps(left_range.start(), left_range.end());
                     if num_overlaps == 0 {
@@ -507,7 +512,7 @@ where
     }
 }
 
-impl<'a, CL, U> GRanges<CL, Vec<U>>
+impl<CL, U> GRanges<CL, Vec<U>>
 where
     CL: IterableRangeContainer,
 {
@@ -540,7 +545,7 @@ where
 
         for (seqname, left_ranges) in self.ranges.iter() {
             for left_range in left_ranges.iter_ranges() {
-                if let Some(right_ranges) = right.ranges.get(&seqname) {
+                if let Some(right_ranges) = right.ranges.get(seqname) {
                     let num_overlaps =
                         right_ranges.count_overlaps(left_range.start(), left_range.end());
                     if num_overlaps == 0 {
@@ -557,13 +562,6 @@ where
             }
         }
         Ok(gr)
-    }
-
-    pub fn filter_overlaps_anti<DR: IndexedDataContainer<'a>>(
-        &self,
-        right: &GRanges<COITreesIndexed, DR>,
-    ) -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError> {
-        todo!()
     }
 }
 
