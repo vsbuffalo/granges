@@ -5,32 +5,17 @@
 //! ensure the output is the *exact* same.
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use granges::{commands::granges_random_bed, test_utilities::granges_binary_path};
+use granges::test_utilities::{granges_binary_path, random_bedfile};
 use std::process::Command;
-use tempfile::NamedTempFile;
 
-const BED_LENGTH: u32 = 10_000;
-
-/// Create a random BED3 file based on the hg38 sequence lengths, and write to disk.
-pub fn random_bedfile() -> NamedTempFile {
-    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-    let random_bedfile_path = temp_file.path().to_path_buf();
-    granges_random_bed(
-        "tests_data/hg38_seqlens.tsv",
-        BED_LENGTH,
-        Some(&random_bedfile_path),
-        true,
-    )
-    .expect("could not generate random BED file");
-    temp_file
-}
+const BED_LENGTH: usize = 10_000;
 
 fn bench_range_adjustment(c: &mut Criterion) {
     // create the benchmark group
     let mut group = c.benchmark_group("slop vs adjust");
 
     // create the test data
-    let input_bedfile = random_bedfile();
+    let input_bedfile = random_bedfile(BED_LENGTH);
 
     // configure the sample size for the group
     // group.sample_size(10);
@@ -68,5 +53,51 @@ fn bench_range_adjustment(c: &mut Criterion) {
         });
     });
 }
-criterion_group!(benches, bench_range_adjustment);
+
+fn bench_filter_adjustment(c: &mut Criterion) {
+    // create the benchmark group
+    let mut group = c.benchmark_group("intersect vs filter");
+
+    // create the test data
+    let random_bedfile_left_tempfile = random_bedfile(BED_LENGTH);
+    let random_bedfile_right_tempfile = random_bedfile(BED_LENGTH);
+    let random_bedfile_left = random_bedfile_left_tempfile.path();
+    let random_bedfile_right = random_bedfile_right_tempfile.path();
+
+    // configure the sample size for the group
+    // group.sample_size(10);
+    group.bench_function("bedtools_intersect", |b| {
+        b.iter(|| {
+            let bedtools_output = Command::new("bedtools")
+                .arg("intersect")
+                .arg("-a")
+                .arg(&random_bedfile_left)
+                .arg("-b")
+                .arg(&random_bedfile_right)
+                .arg("-wa")
+                .arg("-u")
+                .output()
+                .expect("bedtools intersect failed");
+            assert!(bedtools_output.status.success());
+        });
+    });
+
+    group.bench_function("granges_filter", |b| {
+        b.iter(|| {
+            let granges_output = Command::new(granges_binary_path())
+                .arg("filter")
+                .arg("--seqlens")
+                .arg("tests_data/hg38_seqlens.tsv")
+                .arg("--left")
+                .arg(&random_bedfile_left)
+                .arg("--right")
+                .arg(&random_bedfile_right)
+                .output()
+                .expect("granges adjust failed");
+            assert!(granges_output.status.success());
+        });
+    });
+}
+
+criterion_group!(benches, bench_filter_adjustment, bench_range_adjustment);
 criterion_main!(benches);

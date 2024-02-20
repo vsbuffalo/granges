@@ -1,16 +1,12 @@
 //! Validation against bedtools
 
-use granges::{commands::granges_random_bed, test_utilities::granges_binary_path, prelude::{Bed3Iterator, GenomicRangesFile}};
-use std::process::Command;
-use tempfile::{NamedTempFile, Builder};
-
-
-fn temp_bedfile() -> NamedTempFile {
-    Builder::new()
-        .suffix(".bed")
-        .tempfile()
-        .expect("Failed to create temp file")
-}
+use granges::{
+    commands::granges_random_bed,
+    prelude::GenomicRangesFile,
+    test_utilities::{granges_binary_path, random_bedfile, temp_bedfile},
+};
+use std::{path::Path, process::Command};
+use tempfile::{Builder, NamedTempFile};
 
 #[test]
 fn test_random_bed3file_filetype_detect() {
@@ -21,8 +17,8 @@ fn test_random_bed3file_filetype_detect() {
         100_000,
         Some(&random_bedfile_path),
         true,
-        )
-        .expect("could not generate random BED file");
+    )
+    .expect("could not generate random BED file");
 
     match GenomicRangesFile::detect(random_bedfile_path).unwrap() {
         GenomicRangesFile::Bed3(_) => (),
@@ -30,16 +26,18 @@ fn test_random_bed3file_filetype_detect() {
     }
 }
 
-#[test] fn test_against_bedtools_slop() { let random_bedfile = temp_bedfile(); let
-    random_bedfile_path = random_bedfile.path();
+#[test]
+fn test_against_bedtools_slop() {
+    let random_bedfile = temp_bedfile();
+    let random_bedfile_path = random_bedfile.path();
 
     granges_random_bed(
         "tests_data/hg38_seqlens.tsv",
         100_000,
         Some(&random_bedfile_path),
         true,
-        )
-        .expect("could not generate random BED file");
+    )
+    .expect("could not generate random BED file");
 
     let width = 10;
 
@@ -71,5 +69,60 @@ fn test_random_bed3file_filetype_detect() {
     assert_eq!(
         String::from_utf8_lossy(&bedtools_output.stdout),
         String::from_utf8_lossy(&granges_output.stdout)
-        );
+    );
+}
+
+/// Test bedtools intersect -a <left> -b <right> -wa -u
+/// against
+/// granges filter --seqlens <genome> --left <left> --right <right>
+#[test]
+fn test_against_bedtools_intersect_wa() {
+    let num_ranges = 1_000_000;
+
+    let random_bedfile_left_tempfile = random_bedfile(num_ranges);
+    let random_bedfile_right_tempfile = random_bedfile(num_ranges);
+    let random_bedfile_left = random_bedfile_left_tempfile.path();
+    let random_bedfile_right = random_bedfile_right_tempfile.path();
+
+    // for testing: uncomment and results are local for inspection
+    // let random_bedfile_left = Path::new("test_left.bed");
+    // let random_bedfile_right = Path::new("test_right.bed");
+
+    granges_random_bed(
+        "tests_data/hg38_seqlens.tsv",
+        num_ranges,
+        Some(&random_bedfile_right),
+        true,
+    )
+    .expect("could not generate random BED file");
+
+    let bedtools_output = Command::new("bedtools")
+        .arg("intersect")
+        .arg("-a")
+        .arg(&random_bedfile_left)
+        .arg("-b")
+        .arg(&random_bedfile_right)
+        .arg("-wa")
+        .arg("-u")
+        .output()
+        .expect("bedtools intersect failed");
+
+    let granges_output = Command::new(granges_binary_path())
+        .arg("filter")
+        .arg("--seqlens")
+        .arg("tests_data/hg38_seqlens.tsv")
+        .arg("--left")
+        .arg(&random_bedfile_left)
+        .arg("--right")
+        .arg(&random_bedfile_right)
+        .output()
+        .expect("granges adjust failed");
+
+    assert!(bedtools_output.status.success(), "{:?}", bedtools_output);
+    assert!(granges_output.status.success(), "{:?}", granges_output);
+
+    assert_eq!(
+        String::from_utf8_lossy(&bedtools_output.stdout),
+        String::from_utf8_lossy(&granges_output.stdout)
+    );
 }

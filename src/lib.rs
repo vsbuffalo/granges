@@ -26,12 +26,14 @@ pub mod prelude {
     pub use crate::error::GRangesError;
     pub use crate::granges::{GRanges, GRangesEmpty};
     pub use crate::io::file::read_seqlens;
-    pub use crate::io::{Bed3Iterator, BedlikeIterator, GenomicRangesFile, TsvRecordIterator, GenomicRangesParser};
+    pub use crate::io::{
+        Bed3Iterator, BedlikeIterator, GenomicRangesFile, GenomicRangesParser, TsvRecordIterator,
+    };
 
     pub use crate::ranges::vec::{VecRangesEmpty, VecRangesIndexed};
     pub use crate::traits::{
-        GeneralRangeRecordIterator, GenericRange, GenomicRangesTsvSerialize, IndexedDataContainer,
-        IntoIterableRangesContainer, IterableRangeContainer, TsvSerialize,
+        AsGRangesRef, GeneralRangeRecordIterator, GenericRange, GenomicRangesTsvSerialize,
+        IndexedDataContainer, IntoIterableRangesContainer, IterableRangeContainer, TsvSerialize,
     };
 
     pub use crate::seqlens;

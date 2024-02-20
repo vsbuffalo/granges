@@ -4,18 +4,21 @@
 use std::path::PathBuf;
 
 use crate::{
+    commands::granges_random_bed,
     create_granges_with_seqlens,
     error::GRangesError,
+    granges::GRangesEmpty,
     prelude::{GRanges, VecRangesIndexed},
     ranges::{
         coitrees::COITrees,
         vec::{VecRanges, VecRangesEmpty},
         RangeEmpty,
     },
-    Position, granges::GRangesEmpty,
+    Position,
 };
 use indexmap::IndexMap;
 use rand::{seq::SliceRandom, thread_rng, Rng};
+use tempfile::{Builder, NamedTempFile};
 
 /// Get the path to the `grange` command line tool after a build.
 /// This is used for integration tests and benchmarks.
@@ -108,6 +111,27 @@ pub fn random_coitrees() -> COITrees<()> {
     let vr = random_vecranges(100);
     let cr: COITrees<()> = vr.into();
     cr
+}
+
+/// Get a temporary file with a .bed suffix.
+pub fn temp_bedfile() -> NamedTempFile {
+    Builder::new()
+        .suffix(".bed")
+        .tempfile()
+        .expect("Failed to create temp file")
+}
+
+/// Create a random BED3 file based on the hg38 sequence lengths, and write to disk.
+pub fn random_bedfile(length: usize) -> NamedTempFile {
+    let temp_bedfile = temp_bedfile();
+    granges_random_bed(
+        "tests_data/hg38_seqlens.tsv",
+        length,
+        Some(temp_bedfile.path()),
+        true,
+    )
+    .expect("could not generate random BED file");
+    temp_bedfile
 }
 
 /// Range test case #1

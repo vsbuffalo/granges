@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::{
-    io::{OutputFile, parsers::GenomicRangesParser},
+    io::{parsers::GenomicRangesParser, OutputFile},
     prelude::*,
     ranges::operations::adjust_range,
     reporting::{CommandOutput, Report},
@@ -56,14 +56,14 @@ pub fn granges_adjust(
 
             if skipped_ranges > 0 {
                 report.add_issue(format!(
-                        "{} ranges were removed because their widths after adjustment were ≤ 0",
-                        skipped_ranges
-                        ))
+                    "{} ranges were removed because their widths after adjustment were ≤ 0",
+                    skipped_ranges
+                ))
             }
         }
     } else {
-        // If we do need to sort, build up a GRanges variant and adjust ranges through 
-        // the GRanges interface. Note we need to detect and build a specific iterator 
+        // If we do need to sort, build up a GRanges variant and adjust ranges through
+        // the GRanges interface. Note we need to detect and build a specific iterator
         // for the filetype.
 
         let ranges_iter = GenomicRangesFile::parsing_iterator(bedfile)?;
@@ -71,19 +71,18 @@ pub fn granges_adjust(
             GenomicRangesParser::Bed3(iter) => {
                 let gr = GRangesEmpty::from_iter(iter, &genome)?;
                 gr.adjust_ranges(-both, both).to_tsv(output)?
-            },
+            }
             GenomicRangesParser::Bedlike(iter) => {
                 // Note the call to try_unwrap_data() here: this is because
                 // we know that the records *do* have data. Unwrapping the Option<String>
-                // values means that writing to TSV doesn't have to deal with this (which 
+                // values means that writing to TSV doesn't have to deal with this (which
                 // always creates headaches).
                 let gr = GRanges::from_iter(iter.try_unwrap_data()?, &genome)?;
                 gr.adjust_ranges(-both, both).to_tsv(output)?
-            },
+            }
             GenomicRangesParser::Unsupported => {
                 return Err(GRangesError::UnsupportedGenomicRangesFileFormat)
-            },
-
+            }
         }
     }
     Ok(CommandOutput::new((), report))
@@ -102,47 +101,65 @@ pub fn granges_filter(
     let left_iter = GenomicRangesFile::parsing_iterator(left_path)?;
     let right_iter = GenomicRangesFile::parsing_iterator(right_path)?;
 
-    let output_stream = output.as_ref().map_or(OutputFile::new_stdout(None), |file| {
-        OutputFile::new(file, None)
-    });
-    let mut writer = output_stream.writer()?;
-
     // for reporting stuff to the user
     let mut report = Report::new();
 
     match (left_iter, right_iter) {
         (GenomicRangesParser::Bed3(left), GenomicRangesParser::Bed3(right)) => {
+            let left_gr = GRangesEmpty::from_iter(left, &genome)?;
+            let right_gr = GRangesEmpty::from_iter(right, &genome)?;
 
-            let left_gr = GRangesEmpty::from_iter(left, &genome)?; let right_gr =
-                GRangesEmpty::from_iter(right, &genome)?;
+            let right_gr = right_gr.into_coitrees()?;
 
-            let right_gr = right_gr.to_coitrees()?;
+            let mut intersection = left_gr.filter_overlaps(&right_gr)?;
+            intersection.to_tsv(output)?;
+
+            Ok(CommandOutput::new((), report))
+        }
+        (GenomicRangesParser::Bed3(left), GenomicRangesParser::Bedlike(right)) => {
+            let left_gr = GRangesEmpty::from_iter(left, &genome)?;
+            let right_gr = GRanges::from_iter(right.try_unwrap_data()?, &genome)?;
+
+            let right_gr = right_gr.into_coitrees()?;
 
             let intersection = left_gr.filter_overlaps(&right_gr)?;
             intersection.to_tsv(output)?;
 
             Ok(CommandOutput::new((), report))
         }
-        (GenomicRangesParser::Bed3(left), GenomicRangesParser::Bedlike(right)) => {
-            Ok(CommandOutput::new((), report))
-        }
         (GenomicRangesParser::Bedlike(left), GenomicRangesParser::Bed3(right)) => {
+            let left_gr = GRanges::from_iter(left.try_unwrap_data()?, &genome)?;
+            let right_gr = GRangesEmpty::from_iter(right, &genome)?;
+
+            let right_gr = right_gr.into_coitrees()?;
+
+            let intersection = left_gr.filter_overlaps(&right_gr)?;
+            intersection.to_tsv(output)?;
+
             Ok(CommandOutput::new((), report))
         }
         (GenomicRangesParser::Bedlike(left), GenomicRangesParser::Bedlike(right)) => {
+            let left_gr = GRanges::from_iter(left.try_unwrap_data()?, &genome)?;
+            let right_gr = GRanges::from_iter(right.try_unwrap_data()?, &genome)?;
+
+            let right_gr = right_gr.into_coitrees()?;
+
+            let intersection = left_gr.filter_overlaps(&right_gr)?;
+            intersection.to_tsv(output)?;
+
             Ok(CommandOutput::new((), report))
         }
-        _ => Ok(CommandOutput::new((), report)),
+        _ => Err(GRangesError::UnsupportedGenomicRangesFileFormat),
     }
 }
 
 /// Generate a random BED-like file with genomic ranges.
 pub fn granges_random_bed(
     seqlens: impl Into<PathBuf>,
-    num: u32,
+    num: usize,
     output: Option<impl Into<PathBuf>>,
     sort: bool,
-    ) -> Result<CommandOutput<()>, GRangesError> {
+) -> Result<CommandOutput<()>, GRangesError> {
     // get the genome info
     let genome = read_seqlens(seqlens)?;
 

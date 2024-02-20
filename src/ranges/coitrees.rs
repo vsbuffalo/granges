@@ -104,9 +104,11 @@ impl<R: Clone> RangeContainer for COITrees<R> {
 /// Convert between [`coitrees::Interval`] with index metadata to a [`RangeEmpty`].
 impl From<Interval<&()>> for RangeEmpty {
     fn from(value: Interval<&()>) -> Self {
+        let first: Position = value.first.try_into().unwrap();
+        let last: Position = value.last.try_into().unwrap();
         RangeEmpty {
-            start: value.first.try_into().unwrap(),
-            end: value.last.try_into().unwrap(),
+            start: first,
+            end: last + 1,
         }
     }
 }
@@ -114,9 +116,11 @@ impl From<Interval<&()>> for RangeEmpty {
 /// Convert between [`coitrees::Interval`] with index metadata to a [`RangeIndexed`].
 impl From<Interval<&usize>> for RangeIndexed {
     fn from(value: Interval<&usize>) -> Self {
+        let first: Position = value.first.try_into().unwrap();
+        let last: Position = value.last.try_into().unwrap();
         RangeIndexed {
-            start: value.first.try_into().unwrap(),
-            end: value.last.try_into().unwrap(),
+            start: first,
+            end: last + 1,
             index: *value.metadata(),
         }
     }
@@ -151,7 +155,9 @@ impl GenericInterval<()> for RangeEmpty {
         self.start.try_into().unwrap()
     }
     fn last(&self) -> i32 {
-        self.end.try_into().unwrap()
+        let end: i32 = self.end.try_into().unwrap();
+        // convert right-exclusive to inclusive
+        end - 1
     }
     fn metadata(&self) -> &() {
         &()
@@ -163,13 +169,17 @@ impl GenericInterval<usize> for RangeIndexed {
         self.start.try_into().unwrap()
     }
     fn last(&self) -> i32 {
-        self.end.try_into().unwrap()
+        let end: i32 = self.end.try_into().unwrap();
+        // convert right-exclusive to inclusive
+        end - 1
     }
     fn metadata(&self) -> &usize {
         &self.index
     }
 }
 
+// Note: this is predominantly used in the join logic, where overlapping
+// ranges as [`coitrees::IntervalNode`] are processed.
 impl GenericRange for IntervalNode<(), usize> {
     fn start(&self) -> Position {
         self.first().try_into().unwrap()
@@ -182,6 +192,8 @@ impl GenericRange for IntervalNode<(), usize> {
     }
 }
 
+// Note: this is predominantly used in the join logic, where overlapping
+// ranges as [`coitrees::IntervalNode`] are processed.
 impl GenericRange for IntervalNode<usize, usize> {
     fn start(&self) -> Position {
         self.first().try_into().unwrap()
@@ -196,17 +208,53 @@ impl GenericRange for IntervalNode<usize, usize> {
 
 #[cfg(test)]
 mod tests {
+    use coitrees::{GenericInterval, Interval};
+
     use crate::prelude::*;
-    use crate::ranges::RangeIndexed;
+    use crate::ranges::{RangeEmpty, RangeIndexed};
     use crate::test_utilities::granges_test_case_01;
 
     #[test]
     fn test_ranges_iterable_coitrees() {
-        let gr = granges_test_case_01().to_coitrees().unwrap();
+        let gr = granges_test_case_01().into_coitrees().unwrap();
         let mut chr1_iter = gr.get_ranges("chr1").unwrap().iter_ranges();
         assert_eq!(chr1_iter.next().unwrap(), RangeIndexed::new(0, 5, 0));
         assert_eq!(chr1_iter.next().unwrap(), RangeIndexed::new(4, 7, 1));
         assert_eq!(chr1_iter.next().unwrap(), RangeIndexed::new(10, 17, 2));
         assert!(chr1_iter.next().is_none());
+    }
+
+    #[test]
+    fn test_from_interval_to_range_empty() {
+        let interval: Interval<&()> = Interval::new(0, 10, &());
+        let range_empty: RangeEmpty = interval.into();
+        assert_eq!(range_empty.start, 0);
+        assert_eq!(range_empty.end, 11);
+        assert_eq!(range_empty.start(), 0);
+        assert_eq!(range_empty.end(), 11);
+    }
+
+    #[test]
+    fn test_from_interval_to_range_indexed() {
+        let interval: Interval<&usize> = Interval::new(0, 10, &0);
+        let range_empty: RangeIndexed = interval.into();
+        assert_eq!(range_empty.start, 0);
+        assert_eq!(range_empty.end, 11);
+        assert_eq!(range_empty.start(), 0);
+        assert_eq!(range_empty.end(), 11);
+    }
+
+    #[test]
+    fn test_generic_interval_for_range_empty() {
+        let range = RangeEmpty::new(0, 10);
+        assert_eq!(range.first(), 0);
+        assert_eq!(range.last(), 9);
+    }
+
+    #[test]
+    fn test_generic_interval_for_range_indexed() {
+        let range = RangeIndexed::new(0, 10, 1);
+        assert_eq!(range.first(), 0);
+        assert_eq!(range.last(), 9);
     }
 }

@@ -1,12 +1,10 @@
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use granges::{
     commands::{granges_adjust, granges_filter},
-    io::{parsers::Bed3Iterator, OutputFile},
-    prelude::{read_seqlens, GRanges, GRangesError, GenomicRangesFile},
-    reporting::{Report, CommandOutput},
-    PositionOffset, granges::GRangesEmpty,
+    prelude::GRangesError,
+    PositionOffset,
 };
 
 #[cfg(feature = "dev-commands")]
@@ -86,7 +84,7 @@ enum Commands {
 
         /// number of random ranges to generate
         #[arg(long, required = true)]
-        num: u32,
+        num: usize,
 
         /// an optional output file (standard output will be used if not specified)
         #[arg(long)]
@@ -114,9 +112,7 @@ fn run() -> Result<(), GRangesError> {
             right,
             output,
             sort,
-        }) => {
-            granges_filter(seqlens, left, right, output.as_ref(), *sort)
-        }
+        }) => granges_filter(seqlens, left, right, output.as_ref(), *sort),
         #[cfg(feature = "dev-commands")]
         Some(Commands::RandomBed {
             seqlens,

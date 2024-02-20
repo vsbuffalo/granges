@@ -2,7 +2,7 @@ use genomap::GenomeMap;
 
 use crate::{
     ranges::GenomicRangeIndexedRecord,
-    traits::{GenericRange, RangeContainer, IterableRangeContainer},
+    traits::{GenericRange, IterableRangeContainer, RangeContainer},
 };
 
 /// An iterator yielding [`RangeIndexedRecord`], which store

@@ -1,6 +1,8 @@
 use super::operations::adjust_range;
 use super::{validate_range, RangeEmpty, RangeIndexed};
-use crate::traits::{GenericRange, IntoIterableRangesContainer, IterableRangeContainer, AdjustableGenericRange};
+use crate::traits::{
+    AdjustableGenericRange, GenericRange, IntoIterableRangesContainer, IterableRangeContainer,
+};
 use crate::PositionOffset;
 use crate::{error::GRangesError, traits::RangeContainer, Position};
 

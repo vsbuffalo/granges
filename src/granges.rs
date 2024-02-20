@@ -62,7 +62,7 @@ use genomap::GenomeMap;
 use indexmap::IndexMap;
 
 use crate::{
-    io::{OutputFile},
+    io::OutputFile,
     iterators::GRangesIterator,
     prelude::GRangesError,
     ranges::{
@@ -71,8 +71,8 @@ use crate::{
         GenomicRangeEmptyRecord, GenomicRangeRecord, RangeEmpty, RangeIndexed,
     },
     traits::{
-        GenericRange, GenomicRangesTsvSerialize,
-        IndexedDataContainer, RangeContainer, IterableRangeContainer, TsvSerialize, AsGRangesRef, AdjustableGenericRange, 
+        AdjustableGenericRange, AsGRangesRef, GenericRange, GenomicRangesTsvSerialize,
+        IndexedDataContainer, IterableRangeContainer, RangeContainer, TsvSerialize,
     },
     Position, PositionOffset,
 };
@@ -112,7 +112,8 @@ where
 
     /// Get the sequences lengths.
     pub fn seqlens(&self) -> IndexMap<String, Position> {
-        let seqlens = self.0
+        let seqlens = self
+            .0
             .ranges
             .iter()
             .map(|(seqname, ranges)| (seqname.to_string(), ranges.sequence_length()))
@@ -128,7 +129,7 @@ impl<C> From<GRangesEmpty<C>> for GRanges<C, ()> {
 }
 
 impl<'a, C> AsGRangesRef<'a, C, ()> for GRangesEmpty<C> {
-    /// Convert a reference to a [`GRangesEmpty<C>`] to a reference to the 
+    /// Convert a reference to a [`GRangesEmpty<C>`] to a reference to the
     /// underlying [`GRanges<C, ()>`]. This is to greatly improve the ergonomics
     /// of functions that could take either a [`GRanges`] or [`GRangesEmpty] type.
     fn as_granges_ref(&'a self) -> &'a GRanges<C, ()> {
@@ -139,14 +140,12 @@ impl<'a, C> AsGRangesRef<'a, C, ()> for GRangesEmpty<C> {
 impl<'a, C, T> AsGRangesRef<'a, C, T> for GRanges<C, T> {
     /// Return a reference of a [`GRanges<C, T>`] object. This is essentially
     /// a pass-through method. [`IntoGRangesRef`] is not needed in this case,
-    /// but is needed elsewhere (see the implementation for [`GRangesEmpty`]) to 
+    /// but is needed elsewhere (see the implementation for [`GRangesEmpty`]) to
     /// improve the ergonomics of working with [`GRanges`] and [`GRangesEmpty`] types.
     fn as_granges_ref(&'a self) -> &'a GRanges<C, T> {
         self
     }
 }
-
-
 
 impl<C, T> GRanges<C, T>
 where
@@ -251,12 +250,11 @@ impl<R: GenericRange, T> GRanges<VecRanges<R>, T> {
         self.ranges.values_mut().for_each(|ranges| ranges.sort());
         self
     }
-   
+
     pub fn shink(&mut self) {
         todo!()
     }
 }
-
 
 impl<R: AdjustableGenericRange, T> GRanges<VecRanges<R>, T> {
     /// Adjust all the ranges in this [`GRanges`] object in place.
@@ -267,10 +265,9 @@ impl<R: AdjustableGenericRange, T> GRanges<VecRanges<R>, T> {
         self
     }
 }
- 
 
 impl<R: GenericRange> GRangesEmpty<VecRanges<R>> {
-    /// Create a new [`GRangesEmpty`] object, with vector storage for ranges and no 
+    /// Create a new [`GRangesEmpty`] object, with vector storage for ranges and no
     /// data container.
     pub fn new_vec(seqlens: &IndexMap<String, Position>) -> Self {
         GRangesEmpty(GRanges::new_vec(seqlens))
@@ -283,7 +280,7 @@ impl<R: GenericRange> GRangesEmpty<VecRanges<R>> {
     pub fn shink(&mut self) {
         todo!()
     }
-} 
+}
 
 impl<R: AdjustableGenericRange> GRangesEmpty<VecRanges<R>> {
     pub fn adjust_ranges(self, start_delta: PositionOffset, end_delta: PositionOffset) -> Self {
@@ -368,7 +365,8 @@ impl GRangesEmpty<VecRanges<RangeEmpty>> {
     ) -> Result<(), GRangesError> {
         // push an unindexed (empty) range
         let range = RangeEmpty::new(start, end);
-        let range_container = self.0
+        let range_container = self
+            .0
             .ranges
             .get_mut(seqname)
             .ok_or(GRangesError::MissingSequence(seqname.to_string()))?;
@@ -435,13 +433,14 @@ impl GRangesEmpty<VecRangesEmpty> {
     }
 }
 
-
-impl<C> GRangesEmpty<C> 
-where COITrees<()>: From<C> {
+impl<C> GRangesEmpty<C>
+where
+    COITrees<()>: From<C>,
+{
     /// Convert the [`VecRangesEmpty`] range containers in this [`GRangesEmpty`] to a
-    /// cache-oblivious interval tree range container, [`COITreesEmpty`]. This is 
+    /// cache-oblivious interval tree range container, [`COITreesEmpty`]. This is
     /// done using the [`coitrees`] library by Daniel C. Jones.
-    pub fn to_coitrees(self) -> Result<GRangesEmpty<COITreesEmpty>, GRangesError> {
+    pub fn into_coitrees(self) -> Result<GRangesEmpty<COITreesEmpty>, GRangesError> {
         let old_ranges = self.0.ranges;
         let mut new_ranges = GenomeMap::new();
         for (seqname, vec_ranges) in old_ranges.into_iter() {
@@ -456,10 +455,10 @@ where COITrees<()>: From<C> {
 }
 
 impl<T> GRanges<VecRanges<RangeIndexed>, T> {
-    /// Convert the [`VecRangesIndexed`] range containers in this [`GRanges`] to a 
-    /// cache-oblivious interval tree range container, [`COITreesIndexed`]. This is 
+    /// Convert the [`VecRangesIndexed`] range containers in this [`GRanges`] to a
+    /// cache-oblivious interval tree range container, [`COITreesIndexed`]. This is
     /// done using the [`coitrees`] library by Daniel C. Jones.
-    pub fn to_coitrees(self) -> Result<GRanges<COITreesIndexed, T>, GRangesError> {
+    pub fn into_coitrees(self) -> Result<GRanges<COITreesIndexed, T>, GRangesError> {
         let old_ranges = self.ranges;
         let mut new_ranges = GenomeMap::new();
         for (seqname, vec_ranges) in old_ranges.into_iter() {
@@ -489,7 +488,7 @@ where
     pub fn filter_overlaps<'a, M: Clone + 'a, DR: 'a>(
         self,
         // right: &GRanges<COITrees<M>, DR>,
-        right: &'a impl AsGRangesRef<'a, COITrees<M>, DR>
+        right: &'a impl AsGRangesRef<'a, COITrees<M>, DR>,
     ) -> Result<GRangesEmpty<VecRangesEmpty>, GRangesError> {
         let mut gr = GRangesEmpty::new_vec(&self.seqlens());
 
@@ -537,15 +536,16 @@ where
     /// [`GRanges<VecRangesIndexed, Vec<U>`]. The data container is rebuilt from indices
     /// into a new [`Vec<U>`] where `U` is the associated type [`IndexedDataContainer::Item`],
     /// which represents the individual data element in the data container.
-    pub fn filter_overlaps<DR>(
+    pub fn filter_overlaps<'a, M: Clone + 'a, DR: 'a>(
         self,
-        right: &GRanges<COITreesIndexed, DR>,
+        right: &'a impl AsGRangesRef<'a, COITrees<M>, DR>,
     ) -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError> {
         let mut gr: GRanges<VecRangesIndexed, Vec<U>> = GRanges::new_vec(&self.seqlens());
 
+        let right_ref = right.as_granges_ref();
         for (seqname, left_ranges) in self.ranges.iter() {
             for left_range in left_ranges.iter_ranges() {
-                if let Some(right_ranges) = right.ranges.get(seqname) {
+                if let Some(right_ranges) = right_ref.ranges.get(seqname) {
                     let num_overlaps =
                         right_ranges.count_overlaps(left_range.start(), left_range.end());
                     if num_overlaps == 0 {
@@ -565,11 +565,9 @@ where
     }
 }
 
-
-
 impl<R, T> GRanges<R, T>
 where
-R: IterableRangeContainer,
+    R: IterableRangeContainer,
 {
     /// Create a new [`GRangesIterator`] to iterate through all the ranges in this [`GRanges`] object.
     pub fn iter_ranges(&self) -> GRangesIterator<'_, R> {
@@ -577,17 +575,15 @@ R: IterableRangeContainer,
     }
 }
 
-
 impl<R> GRangesEmpty<R>
 where
-R: IterableRangeContainer,
+    R: IterableRangeContainer,
 {
     /// Create a new [`GRangesIterator`] to iterate through all the ranges in this [`GRangesEmpty`] object.
     pub fn iter_ranges(&self) -> GRangesIterator<'_, R> {
         GRangesIterator::new(&self.0.ranges)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -600,7 +596,7 @@ mod tests {
 
     #[test]
     fn test_new_vec() {
-        let seqlens = indexmap! { "chr1".to_string() => 10};
+        let seqlens = seqlens! { "chr1" => 10};
         let mut gr = GRanges::new_vec(&seqlens);
         gr.push_range("chr1", 0, 10, 1.1).unwrap();
         assert_eq!(gr.len(), 1);
@@ -615,7 +611,51 @@ mod tests {
     #[test]
     fn test_to_coitrees() {
         let gr_vec = granges_test_case_01();
-        let gr = gr_vec.clone().to_coitrees().unwrap();
+        let gr = gr_vec.clone().into_coitrees().unwrap();
         assert_eq!(gr.len(), 5);
+    }
+
+    #[test]
+    fn granges_filter_by_overlaps() {
+        let seqlens = seqlens! { "chr1" => 10};
+
+        // test 1: one range that overlaps only the first range
+        let gr = granges_test_case_01();
+        let mut gr_keep: GRangesEmpty<VecRangesEmpty> = GRangesEmpty::new_vec(&seqlens);
+        gr_keep.push_range("chr1", 0, 1).unwrap();
+        let gr_keep = gr_keep.into_coitrees().unwrap();
+
+        let gr_filtered = gr.filter_overlaps(&gr_keep).unwrap();
+        assert_eq!(gr_filtered.len(), 1);
+
+        // test 2: one range that overlaps the first two ranges
+        let gr = granges_test_case_01();
+        let mut gr_keep: GRangesEmpty<VecRangesEmpty> = GRangesEmpty::new_vec(&seqlens);
+        gr_keep.push_range("chr1", 0, 5).unwrap();
+        let gr_keep = gr_keep.into_coitrees().unwrap();
+
+        let gr_filtered = gr.filter_overlaps(&gr_keep).unwrap();
+        assert_eq!(gr_filtered.len(), 2);
+
+        // test 3: one range that overlaps no ranges
+        let gr = granges_test_case_01();
+        let mut gr_keep: GRangesEmpty<VecRangesEmpty> = GRangesEmpty::new_vec(&seqlens);
+        gr_keep.push_range("chr1", 8, 9).unwrap();
+        let gr_keep = gr_keep.into_coitrees().unwrap();
+
+        let gr_filtered = gr.filter_overlaps(&gr_keep).unwrap();
+        assert_eq!(gr_filtered.len(), 0);
+
+        // test 4: ranges on two chromosomes: first overlaps two ranges, second
+        // overlaps one
+        let gr = granges_test_case_01();
+        let seqlens = seqlens! { "chr1" => 10, "chr2" => 10 };
+        let mut gr_keep: GRangesEmpty<VecRangesEmpty> = GRangesEmpty::new_vec(&seqlens);
+        gr_keep.push_range("chr1", 4, 7).unwrap();
+        gr_keep.push_range("chr2", 10, 12).unwrap();
+        let gr_keep = gr_keep.into_coitrees().unwrap();
+
+        let gr_filtered = gr.filter_overlaps(&gr_keep).unwrap();
+        assert_eq!(gr_filtered.len(), 3);
     }
 }

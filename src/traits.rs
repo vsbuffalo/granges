@@ -3,18 +3,15 @@
 
 use std::path::PathBuf;
 
-use crate::{
-    error::GRangesError, granges::GRanges, io::parsers::FilteredRanges, Position,
-};
+use crate::{error::GRangesError, granges::GRanges, io::parsers::FilteredRanges, Position};
 
 /// Traits for [`GRanges`] types that can be modified.
 //pub trait GenomicRangesModifiableRanges<C: RangeContainer> {
 //    fn adjust_ranges(self, start_delta: PositionOffset, end_delta: PositionOffset) -> Self;
 //}
 
-
 /// The [`AsGRangesRef`] trait improves the ergonomics of working
-/// with both [`GRanges`] and [`GRangesEmpty`] function arguments. 
+/// with both [`GRanges`] and [`GRangesEmpty`] function arguments.
 pub trait AsGRangesRef<'a, C, T> {
     fn as_granges_ref(&'a self) -> &'a GRanges<C, T>;
 }

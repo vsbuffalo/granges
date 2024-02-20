@@ -6,4 +6,6 @@ pub mod noodles;
 pub mod parsers;
 
 pub use file::{InputFile, OutputFile};
-pub use parsers::{Bed3Iterator, BedlikeIterator, GenomicRangesFile, GenomicRangesParser, TsvRecordIterator};
+pub use parsers::{
+    Bed3Iterator, BedlikeIterator, GenomicRangesFile, GenomicRangesParser, TsvRecordIterator,
+};
