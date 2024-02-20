@@ -6,7 +6,7 @@ use crate::{
     granges::GRanges,
     iterators::GRangesIterator,
     ranges::coitrees::COITreesIndexed,
-    traits::{GenericRange, RangesIterable},
+    traits::{GenericRange, IterableRangeContainer},
     Position,
 };
 
@@ -51,7 +51,7 @@ impl JoinData {
 
 pub struct JoinIterator<'a, CL, DL, DR>
 where
-    CL: RangesIterable,
+    CL: IterableRangeContainer,
 {
     seqnames: Vec<String>,
     left_iter: GRangesIterator<'a, CL>,
@@ -62,7 +62,7 @@ where
 
 impl<'a, CL, DL: 'a, DR> JoinIterator<'a, CL, DL, DR>
 where
-    CL: RangesIterable,
+    CL: IterableRangeContainer,
 {
     pub fn new(left: &'a GRanges<CL, DL>, right: &'a GRanges<COITreesIndexed, DR>) -> Self {
         let seqnames = left.seqnames();
@@ -82,7 +82,7 @@ where
 
 impl<'a, CL, DL, DR> Iterator for JoinIterator<'a, CL, DL, DR>
 where
-    CL: RangesIterable,
+    CL: IterableRangeContainer,
 {
     type Item = JoinData;
     fn next(&mut self) -> Option<Self::Item> {

@@ -2,7 +2,7 @@ use genomap::GenomeMap;
 
 use crate::{
     ranges::GenomicRangeIndexedRecord,
-    traits::{GenericRange, RangeContainer, RangesIterable},
+    traits::{GenericRange, RangeContainer, IterableRangeContainer},
 };
 
 /// An iterator yielding [`RangeIndexedRecord`], which store
@@ -13,16 +13,16 @@ use crate::{
 /// prevents lifetime complexity.
 pub struct GRangesIterator<'a, R>
 where
-    R: RangesIterable,
+    R: IterableRangeContainer,
 {
     ranges: &'a GenomeMap<R>,
     current_seqname_index: usize,
-    current_range_iter: Box<dyn Iterator<Item = <R as RangesIterable>::RangeType> + 'a>,
+    current_range_iter: Box<dyn Iterator<Item = <R as IterableRangeContainer>::RangeType> + 'a>,
 }
 
 impl<'a, R> GRangesIterator<'a, R>
 where
-    R: RangesIterable,
+    R: IterableRangeContainer,
 {
     pub fn new(ranges: &'a GenomeMap<R>) -> Self {
         let current_range_iter = ranges.get_by_index(0).unwrap().iter_ranges();
@@ -36,8 +36,8 @@ where
 
 impl<'a, R> Iterator for GRangesIterator<'a, R>
 where
-    R: RangeContainer + RangesIterable,
-    <R as RangesIterable>::RangeType: GenericRange,
+    R: RangeContainer + IterableRangeContainer,
+    <R as IterableRangeContainer>::RangeType: GenericRange,
 {
     // no matter what the input type is, we can always
     // turn it into this general type.

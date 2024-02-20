@@ -12,7 +12,7 @@ use crate::{
         vec::{VecRanges, VecRangesEmpty},
         RangeEmpty,
     },
-    Position,
+    Position, granges::GRangesEmpty,
 };
 use indexmap::IndexMap;
 use rand::{seq::SliceRandom, thread_rng, Rng};
@@ -86,10 +86,10 @@ pub fn random_vecranges(n: usize) -> VecRanges<RangeEmpty> {
 pub fn random_granges(
     seqlens: &IndexMap<String, Position>,
     num: usize,
-) -> Result<GRanges<VecRangesEmpty, ()>, GRangesError> {
+) -> Result<GRangesEmpty<VecRangesEmpty>, GRangesError> {
     let mut rng = thread_rng();
 
-    let mut gr: GRanges<VecRangesEmpty, ()> = GRanges::new_vec(seqlens);
+    let mut gr = GRangesEmpty::new_vec(seqlens);
 
     let seqnames: Vec<String> = seqlens.keys().cloned().collect();
     for _ in 0..num {

@@ -2,9 +2,11 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 use granges::{
-    commands::{granges_adjust, granges_filter},
-    prelude::{GRangesError, GRanges, read_seqlens},
-    PositionOffset, io::{parsers::Bed3Iterator, OutputFile}, reporting::Report,
+    commands::{granges_adjust},
+    io::{parsers::Bed3Iterator, OutputFile},
+    prelude::{read_seqlens, GRanges, GRangesError, GenomicRangesFile},
+    reporting::{Report, CommandOutput},
+    PositionOffset, granges::GRangesEmpty,
 };
 
 #[cfg(feature = "dev-commands")]
@@ -30,7 +32,6 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 }
-
 
 #[derive(Subcommand)]
 enum Commands {
@@ -114,36 +115,50 @@ fn run() -> Result<(), GRangesError> {
             output,
             sort,
         }) => {
-            todo!()
-            //let genome = read_seqlens(seqlens)?;
-            //match (left, right) {
-            //    (RangeFileType::Bed3(left_path), RangeFileType::Bed3(right_path)) => {
+            let genome = read_seqlens(seqlens)?;
 
-            //        let left_iter = Bed3Iterator::new(left_path)?;
-            //        let right_iter = Bed3Iterator::new(right_path)?;
+            let left_filetype = GenomicRangesFile::detect(left)?;
+            let right_filetype = GenomicRangesFile::detect(right)?;
 
-            //        let left_gr = GRanges::from_iter_ranges_only(left_iter, &genome)?;
-            //        let right_gr = GRanges::from_iter_ranges_only(right_iter, &genome)?;
+            match (left_filetype, right_filetype) {
+                (GenomicRangesFile::Bed3(left_file), GenomicRangesFile::Bed3(right_file)) => {
+                    let left_iter = Bed3Iterator::new(left_file)?;
+                    let right_iter = Bed3Iterator::new(right_file)?;
 
-            //        let right_gr = right_gr.to_coitrees()?;
+                    let left_gr = GRangesEmpty::from_iter(left_iter, &genome)?; let right_gr =
+                        GRangesEmpty::from_iter(right_iter, &genome)?;
 
-            //        let intersection = left_gr.filter
+                    let right_gr = right_gr.to_coitrees()?;
 
-            //        let output_stream = output.map_or(OutputFile::new_stdout(None), |file| {
-            //            OutputFile::new(file, None)
-            //        });
-            //        let mut writer = output_stream.writer()?;
+                    let intersection = left_gr.filter_overlaps(&right_gr);
+                    right_gr.len();
 
-            //        // for reporting stuff to the user
-            //        let mut report = Report::new();
+                    let output_stream = output.as_ref().map_or(OutputFile::new_stdout(None), |file| {
+                        OutputFile::new(file, None)
+                    });
+                    let mut writer = output_stream.writer()?;
 
-            //        intersection.sort().to_tsv(output)?;
+                    // for reporting stuff to the user
+                    let mut report = Report::new();
 
-
-            //    }
-            //}
-            //granges_filter(seqlens, left, right, output.as_ref(), *sort)
-        },
+                    Ok(CommandOutput::new((), report))
+                }
+                (GenomicRangesFile::Bed3(left_file), GenomicRangesFile::Bedlike(right_file)) => {
+                    let mut report = Report::new();
+                    Ok(CommandOutput::new((), report))
+                }
+                (GenomicRangesFile::Bedlike(left_file), GenomicRangesFile::Bed3(right_file)) => {
+                    let mut report = Report::new();
+                    Ok(CommandOutput::new((), report))
+                }
+                (GenomicRangesFile::Bedlike(left_file), GenomicRangesFile::Bedlike(right_file)) => {
+                    let mut report = Report::new();
+                    Ok(CommandOutput::new((), report))
+                }
+                _ => return Err(GRangesError::UnsupportedGenomicRangesFileFormat),
+            }
+            // granges_filter(left, right, output.as_ref(), *sort)
+        }
         #[cfg(feature = "dev-commands")]
         Some(Commands::RandomBed {
             seqlens,

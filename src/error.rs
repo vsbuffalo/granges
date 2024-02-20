@@ -42,4 +42,7 @@ pub enum GRangesError {
     #[error("Invalid GRanges object: no data container.")]
     NoDataContainer,
 
+    // Command line tool related errors
+    #[error("Unsupported genomic range format")]
+    UnsupportedGenomicRangesFileFormat,
 }

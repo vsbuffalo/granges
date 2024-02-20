@@ -3,31 +3,36 @@
 
 use std::path::PathBuf;
 
-use indexmap::IndexMap;
-
 use crate::{
-    error::GRangesError, io::parsers::FilteredRanges, ranges::GenomicRangeRecord, Position, granges::GRanges, PositionOffset,
+    error::GRangesError, granges::GRanges, io::parsers::FilteredRanges, Position, ranges::{coitrees::COITrees, vec::VecRanges},
 };
 
 /// Traits for [`GRanges`] types that can be modified.
-pub trait GenomicRangesOperationsModifiable<C: RangeContainer> {
-    fn adjust_ranges(self, start_delta: PositionOffset, end_delta: PositionOffset) -> Self;
+//pub trait GenomicRangesModifiableRanges<C: RangeContainer> {
+//    fn adjust_ranges(self, start_delta: PositionOffset, end_delta: PositionOffset) -> Self;
+//}
+
+
+pub trait IntoGRangesRef<'a, C, T> {
+    fn into_granges_ref(&'a self) -> &'a GRanges<C, T>;
 }
 
+/// The [`GenomicRangesTsvSerialize`] trait defines how to convert a [`GRanges<R, T>`]
+/// object, for some mix of generic types, to a TSV file.
 pub trait GenomicRangesTsvSerialize<'a, C: RangeContainer> {
     /// Output the TSV version of this [`GRanges`] object.
     fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError>;
 }
 
-/// Traits for [`GRanges`] types that can be built from an iterator.
-pub trait GenomicRangesOperationsExtended<C: RangeContainer> {
-    type DataContainerType;
-    type DataElementType;
-    /// Build a new [`GRanges`] object from an iterator.
-    fn from_iter<I>(iter: I, seqlens: &IndexMap<String, Position>) -> Result<GRanges<C, Self::DataContainerType>, GRangesError> where I: Iterator<Item=Result<GenomicRangeRecord<Self::DataElementType>, GRangesError>>;
-}
+///// Traits for [`GRanges`] types that can be built from an iterator.
+//pub trait GenomicRangesOperationsExtended<C: RangeContainer> {
+//    type DataContainerType;
+//    type DataElementType;
+//    /// Build a new [`GRanges`] object from an iterator.
+//    fn from_iter<I>(iter: I, seqlens: &IndexMap<String, Position>) -> Result<GRanges<C, Self::DataContainerType>, GRangesError> where I: Iterator<Item=Result<GenomicRangeRecord<Self::DataElementType>, GRangesError>>;
+//}
 
-///
+/// The [`GenericRange`] trait defines common functionality for all range types.
 pub trait GenericRange: Clone {
     fn start(&self) -> Position;
     fn end(&self) -> Position;
@@ -67,7 +72,7 @@ pub trait RangeContainer {
     fn sequence_length(&self) -> Position;
 }
 
-pub trait DataContainer{}
+pub trait DataContainer {}
 
 /// Defines functionality for filtering [`RangeRecord`] entries based on their
 /// sequence names. [`RangeRecord`] are predominantly used in reading in data,
@@ -80,19 +85,20 @@ pub trait GeneralRangeRecordIterator<R: GenericRange>:
     fn exclude_seqnames(self, seqnames: Vec<String>) -> FilteredRanges<Self, R>;
 }
 
-/// The [`RangesIterable`] trait defines common functionality for iterating over
+/// The [`IterableRangeContainer`] trait defines common functionality for iterating over
 /// the range types in range containers.
-pub trait RangesIterable
+pub trait IterableRangeContainer
 where
     Self: RangeContainer,
+    <Self as IterableRangeContainer>::RangeType: GenericRange,
 {
     type RangeType: GenericRange;
     fn iter_ranges(&self) -> Box<dyn Iterator<Item = Self::RangeType> + '_>;
 }
 
-/// The [`RangesIntoIterable`] trait defines common functionality for *consuming* iterating
+/// The [`IntoIterableRangeContainer`] trait defines common functionality for *consuming* iterating
 /// over the range types in range containers.
-pub trait RangesIntoIterable<R> {
+pub trait IntoIterableRangesContainer<R> {
     fn into_iter_ranges(self) -> Box<dyn Iterator<Item = R>>;
 }
 

@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
 use crate::{
-    granges::GRangesVariant,
     io::OutputFile,
     prelude::*,
     ranges::operations::adjust_range,
     reporting::{CommandOutput, Report},
     test_utilities::random_granges,
+    traits::{IterableRangeContainer, TsvSerialize},
     PositionOffset,
 };
 
@@ -69,44 +69,37 @@ pub fn granges_adjust(
 
     Ok(CommandOutput::new((), report))
 }
-
-/// Retain only the ranges that have at least one overlap with another set of ranges.
-pub fn granges_filter(
-    seqlens: &PathBuf,
-    left_bedfile: &PathBuf,
-    right_bedfile: &PathBuf,
-    output: Option<&PathBuf>,
-    sort: bool,
-) -> Result<CommandOutput<()>, GRangesError> {
-    let genome = read_seqlens(seqlens)?;
-
-    // in memory (sorted queries not yet supported)
-    let left_record_iter = BedlikeIterator::new(left_bedfile)?
-        .into_variant()?;
-    let right_record_iter = BedlikeIterator::new(right_bedfile)?
-        .into_variant()?;
-
-    let left_gr = GRanges::from_iter_variant(left_record_iter, &genome)?;
-    let right_gr = GRanges::from_iter_variant(right_record_iter, &genome)?;
-
-    todo!()
-    //let right_gr = right_gr.to_coitrees();
-
-    //let intersection = left_gr.filter_overlaps(&right_gr)?;
-
-    //// output stream -- header is None for now (TODO)
-    //let output_stream = output.map_or(OutputFile::new_stdout(None), |file| {
-    //    OutputFile::new(file, None)
-    //});
-    //let mut writer = output_stream.writer()?;
-
-    //// for reporting stuff to the user
-    //let mut report = Report::new();
-
-    //intersection.sort().to_tsv(output)?;
-
-    //Ok(CommandOutput::new((), report))
-}
+//
+// /// Retain only the ranges that have at least one overlap with another set of ranges.
+// pub fn granges_filter<DL, DR>(
+//     seqlens: &PathBuf,
+//     left_granges: GRanges<VecRangesEmpty, DL>,
+//     right_granges: GRanges<VecRangesEmpty, DR>,
+//     sort: bool,
+// ) -> Result<CommandOutput<()>, GRangesError>
+// where
+//     // we must be able to iterate over left ranges
+//     VecRangesEmpty: IterableRangeContainer, 
+//     // we must be able to convert the right GRanges to interval trees
+//      GRanges<VecRangesEmpty, ()>: GenomicRangesToIntervalTrees<()>,
+// {
+//     let right_granges = right_granges.to_coitrees()?;
+//
+//     // let intersection = left_granges.filter_overlaps_(&right_granges)?;
+//
+//     //// output stream -- header is None for now (TODO)
+//     //let output_stream = output.map_or(OutputFile::new_stdout(None), |file| {
+//     //    OutputFile::new(file, None)
+//     //});
+//     //let mut writer = output_stream.writer()?;
+//
+//     // for reporting stuff to the user
+//     let mut report = Report::new();
+//
+//     //intersection.sort().to_tsv(output)?;
+//
+//     Ok(CommandOutput::new((), report))
+// }
 
 /// Generate a random BED-like file with genomic ranges.
 pub fn granges_random_bed(

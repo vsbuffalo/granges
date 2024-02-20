@@ -1,6 +1,6 @@
 use super::operations::adjust_range;
 use super::{validate_range, RangeEmpty, RangeIndexed};
-use crate::traits::{GenericRange, RangesIntoIterable, RangesIterable};
+use crate::traits::{GenericRange, IntoIterableRangesContainer, IterableRangeContainer};
 use crate::PositionOffset;
 use crate::{error::GRangesError, traits::RangeContainer, Position};
 
@@ -58,9 +58,10 @@ impl<R: GenericRange> VecRanges<R> {
     pub fn adjust_ranges(&mut self, start_delta: PositionOffset, end_delta: PositionOffset) {
         let mut ranges = std::mem::replace(&mut self.ranges, Vec::new());
 
-        ranges = ranges.into_iter().filter_map(|range| {
-            adjust_range(range, start_delta, end_delta, self.length)
-        }).collect();
+        ranges = ranges
+            .into_iter()
+            .filter_map(|range| adjust_range(range, start_delta, end_delta, self.length))
+            .collect();
 
         self.ranges = ranges;
     }
@@ -75,14 +76,14 @@ impl<R: Clone> RangeContainer for VecRanges<R> {
     }
 }
 
-impl RangesIntoIterable<RangeIndexed> for VecRanges<RangeIndexed> {
+impl IntoIterableRangesContainer<RangeIndexed> for VecRanges<RangeIndexed> {
     fn into_iter_ranges(self) -> Box<dyn Iterator<Item = RangeIndexed>> {
         let iter = self.ranges.into_iter();
         Box::new(iter)
     }
 }
 
-impl RangesIterable for VecRanges<RangeIndexed> {
+impl IterableRangeContainer for VecRanges<RangeIndexed> {
     type RangeType = RangeIndexed;
     fn iter_ranges(&self) -> Box<dyn Iterator<Item = RangeIndexed> + '_> {
         let iter = self.ranges.iter();
@@ -92,14 +93,14 @@ impl RangesIterable for VecRanges<RangeIndexed> {
     }
 }
 
-impl RangesIntoIterable<RangeEmpty> for VecRanges<RangeEmpty> {
+impl IntoIterableRangesContainer<RangeEmpty> for VecRanges<RangeEmpty> {
     fn into_iter_ranges(self) -> Box<dyn Iterator<Item = RangeEmpty>> {
         let iter = self.ranges.into_iter();
         Box::new(iter)
     }
 }
 
-impl RangesIterable for VecRanges<RangeEmpty> {
+impl IterableRangeContainer for VecRanges<RangeEmpty> {
     type RangeType = RangeEmpty;
     fn iter_ranges(&self) -> Box<dyn Iterator<Item = RangeEmpty> + '_> {
         let iter = self.ranges.iter();

@@ -24,16 +24,14 @@ pub type PositionOffset = i32; // signed variant
 
 pub mod prelude {
     pub use crate::error::GRangesError;
-    pub use crate::granges::GRanges;
+    pub use crate::granges::{GRanges, GRangesEmpty};
     pub use crate::io::file::read_seqlens;
-    pub use crate::io::{BedlikeIterator, Bed3Iterator, TsvRecordIterator};
+    pub use crate::io::{Bed3Iterator, BedlikeIterator, GenomicRangesFile, TsvRecordIterator};
 
     pub use crate::ranges::vec::{VecRangesEmpty, VecRangesIndexed};
     pub use crate::traits::{
-        GenomicRangesOperationsExtended,
-        GenomicRangesOperationsModifiable, GenomicRangesTsvSerialize, 
-        GeneralRangeRecordIterator, GenericRange, IndexedDataContainer, RangesIntoIterable,
-        RangesIterable, TsvSerialize,
+        GeneralRangeRecordIterator, GenericRange, GenomicRangesTsvSerialize, IndexedDataContainer,
+        IntoIterableRangesContainer, IterableRangeContainer, TsvSerialize,
     };
 
     pub use crate::seqlens;
@@ -59,7 +57,7 @@ macro_rules! create_granges_with_seqlens {
 
             $(
                 $(
-                    gr.push_range_with_data(&$chr.to_string(), $start, $end, $data).expect("Failed to push range");
+                    gr.push_range(&$chr.to_string(), $start, $end, $data).expect("Failed to push range");
                 )*
             )*
 
