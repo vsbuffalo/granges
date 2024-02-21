@@ -2,9 +2,9 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use granges::{
-    commands::{granges_adjust, granges_filter},
+    commands::{granges_adjust, granges_filter, granges_flank},
     prelude::GRangesError,
-    PositionOffset,
+    Position, PositionOffset,
 };
 
 #[cfg(feature = "dev-commands")]
@@ -57,6 +57,7 @@ enum Commands {
         /// Sort the ranges after adjusting their start and end positions
         #[arg(short, long)]
         sort: bool,
+        // TODO add skip_missing here
     },
     Filter {
         /// A TSV genome file of chromosome names and their lengths
@@ -75,9 +76,35 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
-        /// Sort the ranges after adjusting their start and end positions
+        /// Skip ranges from sequences (e.g. chromosomes) not present in the genome file.
+        /// By default, ranges with sequence names not in the genome file will raise an error.
+        #[arg(short = 'f', long)]
+        skip_missing: bool,
+    },
+    Flank {
+        /// A TSV genome file of chromosome names and their lengths
+        #[arg(short, long, required = true)]
+        genome: PathBuf,
+
+        /// An input BED-like TSV file
+        #[arg(required = true)]
+        bedfile: PathBuf,
+
+        /// Width (in basepairs) of flank regions to create on both sides of each range
         #[arg(short, long)]
-        sort: bool,
+        both: Option<Position>,
+
+        /// Width (in basepairs) of flank regions to create on the left side of each range
+        #[arg(short, long)]
+        left: Option<Position>,
+
+        /// Width (in basepairs) of flank regions to create on the right side of each range
+        #[arg(short, long)]
+        right: Option<Position>,
+
+        /// An optional output file (standard output will be used if not specified)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
 
         /// Skip ranges from sequences (e.g. chromosomes) not present in the genome file.
         /// By default, ranges with sequence names not in the genome file will raise an error.
@@ -120,9 +147,35 @@ fn run() -> Result<(), GRangesError> {
             left,
             right,
             output,
-            sort,
             skip_missing,
-        }) => granges_filter(genome, left, right, output.as_ref(), *skip_missing, *sort),
+        }) => granges_filter(genome, left, right, output.as_ref(), *skip_missing),
+        Some(Commands::Flank {
+            genome,
+            bedfile,
+            both,
+            left,
+            right,
+            output,
+            skip_missing,
+        }) => {
+            if both.is_some() && (left.is_some() || right.is_some()) {
+                let error = clap::Error::raw(
+                    clap::error::ErrorKind::ArgumentConflict,
+                    "set either --both, or --left and/or --right",
+                );
+                return Err(error.into());
+            }
+            let left = left.or(*both);
+            let right = right.or(*both);
+            if left.is_none() && right.is_none() {
+                let error = clap::Error::raw(
+                    clap::error::ErrorKind::ArgumentConflict,
+                    "set either --both, or --left and/or --right",
+                );
+                return Err(error.into());
+            }
+            granges_flank(genome, bedfile, left, right, output.as_ref(), *skip_missing)
+        }
         #[cfg(feature = "dev-commands")]
         Some(Commands::RandomBed {
             genome,

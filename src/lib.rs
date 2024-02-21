@@ -32,13 +32,18 @@ pub mod prelude {
 
     pub use crate::ranges::vec::{VecRangesEmpty, VecRangesIndexed};
     pub use crate::traits::{
-        AsGRangesRef, GeneralRangeRecordIterator, GenericRange, GenomicRangeRecordUnwrappable,
-        GenomicRangesTsvSerialize, IndexedDataContainer, IntoIterableRangesContainer,
-        IterableRangeContainer, TsvSerialize,
+        AsGRangesRef, GeneralRangeRecordIterator, GenericRange, GenericRangeOperations,
+        GenomicRangeRecordUnwrappable, GenomicRangesTsvSerialize, IndexedDataContainer,
+        IntoIterableRangesContainer, IterableRangeContainer, TsvSerialize,
     };
 
     pub use crate::seqlens;
 }
+
+pub const INTERNAL_ERROR_MESSAGE: &str = r#"
+An internal error has occurred. Please file a GitHub issue at 
+https://github.com/vsbuffalo/granges/issues
+"#;
 
 /// Create and [`indexmap::IndexMap`] of sequence names and their lengths.
 #[macro_export]
@@ -67,4 +72,48 @@ macro_rules! create_granges_with_seqlens {
             gr
         }
     };
+}
+
+/// a version of assert_eq! that is more user-friendly.
+#[macro_export]
+macro_rules! ensure_eq {
+    ($left:expr, $right:expr $(,)?) => ({
+        match (&$left, &$right) {
+            (left_val, right_val) => {
+                if !(*left_val == *right_val) {
+                    panic!("{}\nExpected `{}` but found `{}`.", crate::INTERNAL_ERROR_MESSAGE, stringify!($left), stringify!($right));
+
+                }
+            }
+        }
+    });
+    ($left:expr, $right:expr, $($arg:tt)+) => ({
+        match (&$left, &$right) {
+            (left_val, right_val) => {
+                if !(*left_val == *right_val) {
+                    panic!("{}\n{}\nExpected `{}` but found `{}`.", crate::INTERNAL_ERROR_MESSAGE, format_args!($($arg)+), stringify!($left), stringify!($right));
+                }
+            }
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[should_panic]
+    fn test_ensure_eq() {
+        ensure_eq!(1, 2);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_ensure_eq_msg() {
+        ensure_eq!(1, 2, "Some description of the problem.");
+    }
+
+    #[test]
+    fn test_ensure_eq_pass() {
+        ensure_eq!(1, 1);
+    }
 }

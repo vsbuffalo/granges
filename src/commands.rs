@@ -7,12 +7,10 @@ use crate::{
     reporting::{CommandOutput, Report},
     test_utilities::random_granges,
     traits::TsvSerialize,
-    PositionOffset,
+    Position, PositionOffset,
 };
 
 /// Adjust the genomic ranges in a bedfile by some specified amount.
-// NOTE: we don't do build the full GRanges objects here, for efficiency.
-// But it would be a good benchmark to see how much slower that is.
 pub fn granges_adjust(
     bedfile: &PathBuf,
     seqlens: &PathBuf,
@@ -95,7 +93,6 @@ pub fn granges_filter(
     right_path: &PathBuf,
     output: Option<&PathBuf>,
     skip_missing: bool,
-    sort: bool,
 ) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
     let seqnames: Vec<String> = genome.keys().cloned().collect();
@@ -193,6 +190,44 @@ pub fn granges_filter(
         }
         _ => Err(GRangesError::UnsupportedGenomicRangesFileFormat),
     }
+}
+
+/// Adjust the genomic ranges in a bedfile by some specified amount.
+pub fn granges_flank(
+    seqlens: &PathBuf,
+    bedfile: &PathBuf,
+    left: Option<Position>,
+    right: Option<Position>,
+    output: Option<&PathBuf>,
+    skip_missing: bool,
+) -> Result<CommandOutput<()>, GRangesError> {
+    let genome = read_seqlens(seqlens)?;
+    let seqnames: Vec<String> = genome.keys().cloned().collect();
+    let ranges_iter = GenomicRangesFile::parsing_iterator(bedfile)?;
+
+    let report = Report::new();
+    match ranges_iter {
+        GenomicRangesParser::Bed3(iter) => {
+            let gr = if skip_missing {
+                GRangesEmpty::from_iter(iter.retain_seqnames(&seqnames), &genome)?
+            } else {
+                GRangesEmpty::from_iter(iter, &genome)?
+            };
+            gr.flanking_ranges(left, right)?.to_tsv(output)?
+        }
+        GenomicRangesParser::Bedlike(iter) => {
+            let gr = if skip_missing {
+                GRanges::from_iter(iter.try_unwrap_data().retain_seqnames(&seqnames), &genome)?
+            } else {
+                GRanges::from_iter(iter.try_unwrap_data(), &genome)?
+            };
+            gr.flanking_ranges(left, right)?.to_tsv(output)?
+        }
+        GenomicRangesParser::Unsupported => {
+            return Err(GRangesError::UnsupportedGenomicRangesFileFormat)
+        }
+    }
+    Ok(CommandOutput::new((), report))
 }
 
 /// Generate a random BED-like file with genomic ranges.

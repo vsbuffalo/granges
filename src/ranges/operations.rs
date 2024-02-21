@@ -2,7 +2,10 @@
 //!
 //! - [`adjust()`]: Adjust range start and end positions.
 
-use crate::{traits::AdjustableGenericRange, Position, PositionOffset};
+use crate::{
+    traits::{AdjustableGenericRange, GenericRange},
+    Position, PositionOffset,
+};
 
 /// Adjusts the coordinates of a range, ensuring the adjusted range is within [0, length]
 /// and returning `None` if the range has zero width after adjustment.

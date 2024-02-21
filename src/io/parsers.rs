@@ -715,12 +715,9 @@ pub fn parse_bed3(line: &str) -> Result<GenomicRangeEmptyRecord, GRangesError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        io::{
-            parsers::{get_base_extension, valid_bedlike},
-            InputFile,
-        },
-        prelude::*,
+    use crate::io::{
+        parsers::{get_base_extension, valid_bedlike},
+        InputFile,
     };
 
     use super::GenomicRangesFile;

@@ -49,7 +49,10 @@ pub trait GenericRange: Clone {
     fn overlap_width<R: GenericRange>(&self, other: &R) -> Position {
         let overlap_start = std::cmp::max(self.start(), other.start());
         let overlap_end = std::cmp::min(self.end(), other.end());
-        std::cmp::max(overlap_end - overlap_start - 1, 0)
+        if overlap_start >= overlap_end {
+            return 0;
+        }
+        overlap_end.saturating_sub(overlap_start)
     }
 
     /// Return a tuple of the range created by an overlap with another range; `None` if no overlap.
@@ -65,7 +68,27 @@ pub trait GenericRange: Clone {
     }
 }
 
-/// The [`AdjustableGenericRange`] trait extends addtion functionality to adjustable generic ranges.
+/// The [`GenericRangeOperations`] trait extends additional functionality to [`GenericRange`],
+/// such as the creation of flanking regions.
+pub trait GenericRangeOperations: GenericRange {
+    /// Creates the appropriate flanking ranges.
+    ///
+    /// If the range has an index, this index will be duplicated for any flanking ranges. This
+    /// is because it may be the case that the user wishes to use the data for the original
+    /// range for these flanking ranges.
+    ///
+    /// # Stability
+    /// The interface of this is likely to change, in order to handle
+    /// flanking regions based on strand.
+    fn flanking_ranges<R: GenericRange>(
+        &self,
+        left_flank: Option<Position>,
+        right_flank: Option<Position>,
+        seqlen: Position,
+    ) -> Vec<Self>;
+}
+
+/// The [`AdjustableGenericRange`] trait extends additional functionality to adjustable generic ranges.
 pub trait AdjustableGenericRange: GenericRange {
     /// Set the start to the specified position.
     fn set_start(&mut self, start: Position);
@@ -189,6 +212,13 @@ impl TsvSerialize for &String {
 impl TsvSerialize for String {
     fn to_tsv(&self) -> String {
         self.to_string()
+    }
+}
+
+impl TsvSerialize for Option<String> {
+    fn to_tsv(&self) -> String {
+        self.as_ref()
+            .map_or("".to_string(), |x| format!("\t{}", x.to_tsv()))
     }
 }
 

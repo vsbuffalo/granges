@@ -29,6 +29,12 @@ pub fn read_seqlens(
         let mut columns = line.split('\t');
         let seqname = columns.next().unwrap();
         let length: Position = columns.next().unwrap().parse()?;
+        if seqlens.contains_key(seqname) {
+            return Err(GRangesError::InvalidGenomeFile(format!(
+                "sequence '{}' is duplicated",
+                seqname
+            )));
+        }
         seqlens.insert(seqname.to_string(), length);
     }
     Ok(seqlens)

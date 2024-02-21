@@ -56,12 +56,13 @@
 //! Because at compile-time, the types *need* to be known, there are a few options here.
 //!
 
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 use genomap::GenomeMap;
 use indexmap::IndexMap;
 
 use crate::{
+    ensure_eq,
     io::OutputFile,
     iterators::GRangesIterator,
     prelude::GRangesError,
@@ -71,8 +72,9 @@ use crate::{
         GenomicRangeEmptyRecord, GenomicRangeRecord, RangeEmpty, RangeIndexed,
     },
     traits::{
-        AdjustableGenericRange, AsGRangesRef, GenericRange, GenomicRangesTsvSerialize,
-        IndexedDataContainer, IterableRangeContainer, RangeContainer, TsvSerialize,
+        AdjustableGenericRange, AsGRangesRef, GenericRange, GenericRangeOperations,
+        GenomicRangesTsvSerialize, IndexedDataContainer, IterableRangeContainer, RangeContainer,
+        TsvSerialize,
     },
     Position, PositionOffset,
 };
@@ -198,7 +200,7 @@ where
 
         let seqnames = self.seqnames();
         for range in self.iter_ranges() {
-            let record = range.to_record(&seqnames, self.data.as_ref());
+            let record = range.to_record(&seqnames, self.data.as_ref().unwrap());
             writeln!(writer, "{}", record.to_tsv())?;
         }
         Ok(())
@@ -266,6 +268,48 @@ impl<R: AdjustableGenericRange, T> GRanges<VecRanges<R>, T> {
     }
 }
 
+impl<T> GRanges<VecRangesIndexed, T>
+where
+    VecRangesIndexed: IterableRangeContainer,
+    <VecRangesIndexed as IterableRangeContainer>::RangeType: GenericRangeOperations,
+{
+    /// Create a new [`GRanges`] object of the flanking ranges of the specified widths.
+    ///
+    /// # ⚠️ Warnings
+    /// This creates an index-only ranges container, meaning the data container is *not*
+    /// cloned into this object. This is because future version of the GRanges library
+    /// will have special reference counting based data sharing, to reduce memory overhead.
+    /// Until then, note that trying to access data elements with these indices may cause
+    /// panics.
+    ///
+    /// # Panics
+    /// Data accessing operations in the [`GRanges`] object returned by this function
+    /// will likely cause a panic — see note above.
+    pub fn flanking_ranges(
+        &self,
+        left: Option<Position>,
+        right: Option<Position>,
+    ) -> Result<Self, GRangesError> {
+        let mut gr: GRanges<VecRangesIndexed, T> = GRanges::new_vec(&self.seqlens());
+        let seqlens = self.seqlens();
+        for (seqname, ranges) in self.ranges.iter() {
+            let seqlen = seqlens.get(seqname).unwrap();
+            for range in ranges.iter_ranges() {
+                let flanking_ranges = range.flanking_ranges::<RangeIndexed>(left, right, *seqlen);
+                for flanking_range in flanking_ranges {
+                    gr.push_range_with_index(
+                        seqname,
+                        flanking_range.start,
+                        flanking_range.end,
+                        flanking_range.index,
+                    )?;
+                }
+            }
+        }
+        Ok(gr)
+    }
+}
+
 impl<R: GenericRange> GRangesEmpty<VecRanges<R>> {
     /// Create a new [`GRangesEmpty`] object, with vector storage for ranges and no
     /// data container.
@@ -288,6 +332,43 @@ impl<R: AdjustableGenericRange> GRangesEmpty<VecRanges<R>> {
     }
 }
 
+impl GRangesEmpty<VecRangesEmpty>
+where
+    VecRangesEmpty: IterableRangeContainer,
+    <VecRangesEmpty as IterableRangeContainer>::RangeType: GenericRangeOperations,
+{
+    /// Create a new [`GRanges`] object of the flanking ranges of the specified widths.
+    ///
+    /// # ⚠️ Warnings
+    /// This creates an index-only ranges container, meaning the data container is *not*
+    /// cloned into this object. This is because future version of the GRanges library
+    /// will have special reference counting based data sharing, to reduce memory overhead.
+    /// Until then, note that trying to access data elements with these indices may cause
+    /// panics.
+    ///
+    /// # Panics
+    /// Data accessing operations in the [`GRanges`] object returned by this function
+    /// will likely cause a panic — see note above.
+    pub fn flanking_ranges(
+        &self,
+        left: Option<Position>,
+        right: Option<Position>,
+    ) -> Result<Self, GRangesError> {
+        let mut gr: GRangesEmpty<VecRangesEmpty> = GRangesEmpty::new_vec(&self.seqlens());
+        let seqlens = self.seqlens();
+        for (seqname, ranges) in self.0.ranges.iter() {
+            let seqlen = seqlens.get(seqname).unwrap();
+            for range in ranges.iter_ranges() {
+                let flanking_ranges = range.flanking_ranges::<RangeIndexed>(left, right, *seqlen);
+                for flanking_range in flanking_ranges {
+                    gr.push_range(seqname, flanking_range.start, flanking_range.end)?;
+                }
+            }
+        }
+        Ok(gr)
+    }
+}
+
 impl<U> GRanges<VecRangesIndexed, Vec<U>> {
     /// Push a genomic range with its data to the range and data containers in a [`GRanges] object.
     pub fn push_range(
@@ -297,11 +378,13 @@ impl<U> GRanges<VecRangesIndexed, Vec<U>> {
         end: Position,
         data: U,
     ) -> Result<(), GRangesError> {
+        if self.data.is_none() {
+            self.data = Some(Vec::new());
+        }
         // push data to the vec data container, getting the index
         let index: usize = {
-            let data_container = self.data.get_or_insert_with(Vec::new);
-            data_container.push(data);
-            data_container.len() - 1 // new data index
+            self.data.as_mut().unwrap().push(data);
+            self.data.as_mut().unwrap().len() - 1 // new data index
         };
         // push an indexed range
         let range = RangeIndexed::new(start, end, index);
@@ -330,7 +413,7 @@ where
 
         let seqnames = self.seqnames();
         for range in self.iter_ranges() {
-            let record = range.to_record(&seqnames, self.data.as_ref());
+            let record = range.to_record(&seqnames, self.data.as_ref().unwrap());
             writeln!(writer, "{}", record.to_tsv())?;
         }
         Ok(())
@@ -537,10 +620,17 @@ where
     /// into a new [`Vec<U>`] where `U` is the associated type [`IndexedDataContainer::Item`],
     /// which represents the individual data element in the data container.
     pub fn filter_overlaps<'a, M: Clone + 'a, DR: 'a>(
-        self,
+        mut self,
         right: &'a impl AsGRangesRef<'a, COITrees<M>, DR>,
     ) -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError> {
         let mut gr: GRanges<VecRangesIndexed, Vec<U>> = GRanges::new_vec(&self.seqlens());
+
+        let data = std::mem::take(&mut self.data).unwrap();
+
+        let mut old_indices = HashSet::new(); // the old indices to *keep*
+        let mut new_indices = Vec::new();
+
+        let mut current_index = 0;
 
         let right_ref = right.as_granges_ref();
         for (seqname, left_ranges) in self.ranges.iter() {
@@ -555,12 +645,27 @@ where
                             seqname,
                             left_range.start(),
                             left_range.end(),
-                            left_range.index().unwrap(),
+                            current_index,
                         )?;
+                        old_indices.insert(left_range.index().unwrap());
+                        new_indices.push(current_index);
+                        current_index += 1;
                     }
                 }
             }
         }
+
+        // Now, we reconstruct the right data. Note that we do not use the
+        // standard push_range() method here, which would double the memory
+        // usage essentially.
+        let mut new_data = Vec::new();
+        for (old_index, data_value) in data.into_iter().enumerate() {
+            if old_indices.contains(&old_index) {
+                new_data.push(data_value)
+            }
+        }
+        ensure_eq!(new_data.len(), new_indices.len());
+        gr.data = Some(new_data);
         Ok(gr)
     }
 }
@@ -587,11 +692,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use indexmap::indexmap;
-
     use crate::{
         prelude::*,
-        test_utilities::{granges_test_case_01, random_vecranges},
+        test_utilities::{granges_test_case_01, granges_test_case_02, random_vecranges},
     };
 
     #[test]
@@ -616,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    fn granges_filter_by_overlaps() {
+    fn granges_filter_overlaps() {
         let seqlens = seqlens! { "chr1" => 10};
 
         // test 1: one range that overlaps only the first range
@@ -657,5 +760,40 @@ mod tests {
 
         let gr_filtered = gr.filter_overlaps(&gr_keep).unwrap();
         assert_eq!(gr_filtered.len(), 3);
+    }
+
+    #[test]
+    fn test_flanking_left() {
+        let gr = granges_test_case_02();
+        let gr_left = gr.flanking_ranges(Some(10), None).unwrap();
+
+        let mut gr_left_iter = gr_left.iter_ranges();
+        let first_range = gr_left_iter.next().unwrap();
+        assert_eq!(first_range.start(), 20);
+        assert_eq!(first_range.end(), 31);
+
+        let second_range = gr_left_iter.next().unwrap();
+        assert_eq!(second_range.start(), 90);
+        assert_eq!(second_range.end(), 101);
+    }
+
+    #[test]
+    fn test_flanking_both() {
+        // Now with right flanks too.
+        let gr = granges_test_case_02();
+        let gr_left = gr.flanking_ranges(Some(10), Some(10)).unwrap();
+
+        // First range is the new left flank.
+        let mut gr_left_iter = gr_left.iter_ranges();
+        let first_range = gr_left_iter.next().unwrap();
+        assert_eq!(first_range.start(), 20);
+        assert_eq!(first_range.end(), 31);
+
+        // Now the next should be the new right flank.
+        let second_range = gr_left_iter.next().unwrap();
+        assert_eq!(second_range.start(), 49);
+
+        // the end point is the sequence length, since we can only go to end.
+        assert_eq!(second_range.end(), 50);
     }
 }

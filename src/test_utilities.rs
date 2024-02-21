@@ -154,3 +154,20 @@ pub fn granges_test_case_01() -> GRanges<VecRangesIndexed, Vec<f64>> {
         "chr2" => [(10, 20, 3.7), (18, 32, 1.1)]
     }, seqlens: { "chr1" => 30, "chr2" => 100 })
 }
+
+/// Range test case #2
+///
+/// Ranges:
+///   - chr1:
+///      (30, 50, Some(1.1))
+///   - chr2:
+///      (100, 200, Some(3.7))
+///      (250, 300, Some(1.1))
+///
+/// Seqlens: { "chr1" => 50, "chr2" => 300 }
+pub fn granges_test_case_02() -> GRanges<VecRangesIndexed, Vec<f64>> {
+    create_granges_with_seqlens!(VecRangesIndexed, Vec<f64>, {
+        "chr1" => [(30, 50, 1.1)],
+        "chr2" => [(100, 200, 3.7), (250, 300, 1.1)]
+    }, seqlens: { "chr1" => 50, "chr2" => 300 })
+}

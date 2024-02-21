@@ -4,7 +4,10 @@
 
 use crate::{
     error::GRangesError,
-    traits::{AdjustableGenericRange, GenericRange, IndexedDataContainer, TsvSerialize},
+    traits::{
+        AdjustableGenericRange, GenericRange, GenericRangeOperations, IndexedDataContainer,
+        TsvSerialize,
+    },
     Position,
 };
 
@@ -38,6 +41,32 @@ impl GenericRange for RangeEmpty {
     }
     fn index(&self) -> Option<usize> {
         None
+    }
+}
+
+impl GenericRangeOperations for RangeEmpty {
+    /// Create flanking regions for this [`RangeEmpty`] range.
+    fn flanking_ranges<R: GenericRange>(
+        &self,
+        left_flank: Option<Position>,
+        right_flank: Option<Position>,
+        seqlen: Position,
+    ) -> Vec<Self> {
+        let mut flanking = Vec::new();
+        if let Some(left) = left_flank {
+            let flank_start = std::cmp::max(self.start.saturating_sub(left), 0);
+            let flank_end = std::cmp::min(self.start + 1, seqlen);
+
+            let left_flank_region = RangeEmpty::new(flank_start, flank_end);
+            flanking.push(left_flank_region);
+        }
+        if let Some(right) = right_flank {
+            let flank_start = std::cmp::max(self.end.saturating_sub(1), 0);
+            let flank_end = std::cmp::min(self.end + right, seqlen);
+            let right_flank_region = RangeEmpty::new(flank_start, flank_end);
+            flanking.push(right_flank_region);
+        }
+        flanking
     }
 }
 
@@ -79,6 +108,34 @@ impl GenericRange for RangeIndexed {
     }
     fn index(&self) -> Option<usize> {
         Some(self.index)
+    }
+}
+
+impl GenericRangeOperations for RangeIndexed {
+    /// Create flanking regions for this [`RangeIndexed`] range. Note that
+    /// the index **will be copied** to the new [`RangeIndexed`] flanking ranges
+    /// returned by this method.
+    fn flanking_ranges<R: GenericRange>(
+        &self,
+        left_flank: Option<Position>,
+        right_flank: Option<Position>,
+        seqlen: Position,
+    ) -> Vec<Self> {
+        let mut flanking = Vec::new();
+        if let Some(left) = left_flank {
+            let flank_start = std::cmp::max(self.start.saturating_sub(left), 0);
+            let flank_end = std::cmp::min(self.start + 1, seqlen);
+
+            let left_flank_region = RangeIndexed::new(flank_start, flank_end, self.index);
+            flanking.push(left_flank_region);
+        }
+        if let Some(right) = right_flank {
+            let flank_start = std::cmp::max(self.end.saturating_sub(1), 0);
+            let flank_end = std::cmp::min(self.end + right, seqlen);
+            let right_flank_region = RangeIndexed::new(flank_start, flank_end, self.index);
+            flanking.push(right_flank_region);
+        }
+        flanking
     }
 }
 
@@ -142,36 +199,36 @@ impl TsvSerialize for GenomicRangeRecord<()> {
     }
 }
 
-impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<Option<U>> {
-    fn to_tsv(&self) -> String {
-        match &self.data {
-            None => {
-                format!("{}\t{}\t{}", self.seqname, self.start, self.end,)
-            }
-            Some(data) => {
-                format!(
-                    "{}\t{}\t{}\t{}",
-                    self.seqname,
-                    self.start,
-                    self.end,
-                    data.to_tsv()
-                )
-            }
-        }
-    }
-}
-//
-// impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<U> {
+// impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<Option<U>> {
 //     fn to_tsv(&self) -> String {
-//         format!(
-//             "{}\t{}\t{}\t{}",
-//             self.seqname,
-//             self.start,
-//             self.end,
-//             self.data.to_tsv()
-//         )
+//         match &self.data {
+//             None => {
+//                 format!("{}\t{}\t{}", self.seqname, self.start, self.end,)
+//             }
+//             Some(data) => {
+//                 format!(
+//                     "{}\t{}\t{}\t{}",
+//                     self.seqname,
+//                     self.start,
+//                     self.end,
+//                     data.to_tsv()
+//                 )
+//             }
+//         }
 //     }
 // }
+
+impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<U> {
+    fn to_tsv(&self) -> String {
+        format!(
+            "{}\t{}\t{}{}",
+            self.seqname,
+            self.start,
+            self.end,
+            self.data.to_tsv()
+        )
+    }
+}
 
 /// Represents a genomic range entry without data, e.g. from a BED3 parser.
 #[derive(Debug, Clone, PartialEq)]
@@ -235,12 +292,12 @@ impl GenomicRangeIndexedRecord {
     pub fn to_record<'a, T>(
         self,
         seqnames: &[String],
-        data: Option<&'a T>,
-    ) -> GenomicRangeRecord<Option<<T as IndexedDataContainer<'a>>::Item>>
+        data: &'a T,
+    ) -> GenomicRangeRecord<<T as IndexedDataContainer<'a>>::Item>
     where
         T: IndexedDataContainer<'a> + TsvSerialize,
     {
-        let data = data.and_then(|data_ref| self.index.map(|idx| data_ref.get_value(idx)));
+        let data = data.get_value(self.index().unwrap());
 
         GenomicRangeRecord {
             seqname: seqnames[self.seqname_index].clone(),
@@ -345,16 +402,20 @@ mod tests {
 
     #[test]
     fn test_overlap_width() {
-        // let range_a = RangeEmpty::new(0, 2);
-        // let range_b = RangeEmpty::new(4, 6);
-        // assert_eq!(range_a.overlap_width(&range_b), 0);
-        //
-        // let range_a = RangeEmpty::new(0, 2);
-        // let range_b = RangeEmpty::new(2, 6);
-        // assert_eq!(range_a.overlap_width(&range_b), 0);
-        //
+        let range_a = RangeEmpty::new(0, 2);
+        let range_b = RangeEmpty::new(4, 6);
+        assert_eq!(range_a.overlap_width(&range_b), 0);
+
+        let range_a = RangeEmpty::new(0, 2);
+        let range_b = RangeEmpty::new(2, 6);
+        assert_eq!(range_a.overlap_width(&range_b), 0);
+
         let range_a = RangeEmpty::new(1, 3);
         let range_b = RangeEmpty::new(2, 5);
-        assert_eq!(range_a.overlap_width(&range_b), 0);
+        assert_eq!(range_a.overlap_width(&range_b), 1);
+
+        let range_a = RangeEmpty::new(1, 10);
+        let range_b = RangeEmpty::new(2, 5);
+        assert_eq!(range_a.overlap_width(&range_b), 3);
     }
 }

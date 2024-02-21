@@ -22,6 +22,8 @@ pub enum GRangesError {
     BedlikeTooFewColumns(String),
     #[error("File has invalid column type entry: {0}")]
     InvalidColumnType(String),
+    #[error("Genome file is invalid: {0}")]
+    InvalidGenomeFile(String),
 
     // BedlikeIterator errors
     #[error("GenomicRangeRecord encountered with None data in try_unwrap_data()")]
@@ -45,4 +47,6 @@ pub enum GRangesError {
     // Command line tool related errors
     #[error("Unsupported genomic range format")]
     UnsupportedGenomicRangesFileFormat,
+    #[error("Command line argument error: {0}")]
+    ArgumentError(#[from] clap::error::Error),
 }
