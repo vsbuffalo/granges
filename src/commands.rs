@@ -53,7 +53,7 @@ pub fn granges_adjust(
             let possibly_adjusted_range = adjust_range(range, -both, both, length);
 
             if let Some(range_adjusted) = possibly_adjusted_range {
-                writer.write_all(&range_adjusted.to_tsv().into_bytes())?;
+                writeln!(writer, "{}", &range_adjusted.to_tsv())?;
             } else {
                 skipped_ranges += 1;
             }
@@ -259,7 +259,7 @@ pub fn granges_flank(
                             let flanking_ranges = range
                                 .flanking_ranges::<GenomicRangeRecord<String>>(left, right, length);
                             for flanking_range in flanking_ranges {
-                                writer.write_all(&flanking_range.to_tsv().into_bytes())?;
+                                writeln!(writer, "{}", &flanking_range.to_tsv())?;
                             }
                         }
                     } else {
@@ -273,7 +273,7 @@ pub fn granges_flank(
                             let flanking_ranges = range
                                 .flanking_ranges::<GenomicRangeEmptyRecord>(left, right, length);
                             for flanking_range in flanking_ranges {
-                                writer.write_all(&flanking_range.to_tsv().into_bytes())?;
+                                writeln!(writer, "{}", &flanking_range.to_tsv())?;
                             }
                         }
                     }
@@ -290,7 +290,7 @@ pub fn granges_flank(
                             let flanking_ranges = range
                                 .flanking_ranges::<GenomicRangeRecord<String>>(left, right, length);
                             for flanking_range in flanking_ranges {
-                                writer.write_all(&flanking_range.to_tsv().into_bytes())?;
+                                writeln!(writer, "{}", &flanking_range.to_tsv())?;
                             }
                         }
                     } else {
@@ -304,7 +304,7 @@ pub fn granges_flank(
                             let flanking_ranges = range
                                 .flanking_ranges::<GenomicRangeEmptyRecord>(left, right, length);
                             for flanking_range in flanking_ranges {
-                                writer.write_all(&flanking_range.to_tsv().into_bytes())?;
+                                writeln!(writer, "{}", &flanking_range.to_tsv())?;
                             }
                         }
                     }

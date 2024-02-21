@@ -76,7 +76,7 @@ fn test_against_bedtools_slop() {
 /// granges filter --genome <genome> --left <left> --right <right>
 #[test]
 fn test_against_bedtools_intersect_wa() {
-    let num_ranges = 100_000;
+    let num_ranges = 1_000_000;
 
     let random_bedfile_left_tempfile = random_bedfile(num_ranges);
     let random_bedfile_right_tempfile = random_bedfile(num_ranges);
@@ -131,14 +131,10 @@ fn test_against_bedtools_intersect_wa() {
 /// granges filter --genome <genome> --left 10 --right 20 <input>
 #[test]
 fn test_against_bedtools_flank() {
-    let num_ranges = 100_000;
+    let num_ranges = 1_000;
 
     let random_bedfile_tempfile = random_bedfile(num_ranges);
     let random_bedfile = random_bedfile_tempfile.path();
-
-    // for testing: uncomment and results are local for inspection
-    // let random_bedfile_left = Path::new("test_left.bed");
-    // let random_bedfile_right = Path::new("test_right.bed");
 
     granges_random_bed(
         "tests_data/hg38_seqlens.tsv",
@@ -148,7 +144,6 @@ fn test_against_bedtools_flank() {
     )
     .expect("could not generate random BED file");
 
-    let bedtools_outfile = temp_bedfile();
     let bedtools_output = Command::new("bedtools")
         .arg("flank")
         .arg("-g")
@@ -159,18 +154,9 @@ fn test_against_bedtools_flank() {
         .arg("30")
         .arg("-i")
         .arg(&random_bedfile)
-        .arg(bedtools_outfile.path())
         .output()
         .expect("bedtools flank failed");
 
-    let bedtools_sorted_output = Command::new("bedtools")
-        .arg("sort")
-        .arg("-i")
-        .arg(bedtools_outfile.path())
-        .output()
-        .expect("bedtools intersect failed");
-
-    let granges_outfile = temp_bedfile();
     let granges_output = Command::new(granges_binary_path())
         .arg("flank")
         .arg("--genome")
@@ -180,30 +166,20 @@ fn test_against_bedtools_flank() {
         .arg("--right")
         .arg("30")
         .arg(&random_bedfile)
-        .arg(granges_outfile.path())
         .output()
         .expect("granges flank failed");
 
-    let granges_sorted_output = Command::new("bedtools")
-        .arg("sort")
-        .arg("-i")
-        .arg(bedtools_outfile.path())
-        .output()
-        .expect("bedtools intersect failed");
+    assert!(bedtools_output.status.success(), "{:?}", bedtools_output);
+    assert!(granges_output.status.success(), "{:?}", granges_output);
 
-    assert!(
-        bedtools_sorted_output.status.success(),
-        "{:?}",
-        bedtools_sorted_output
-    );
-    assert!(
-        granges_sorted_output.status.success(),
-        "{:?}",
-        granges_sorted_output
-    );
+    let bedtools_str = String::from_utf8_lossy(&bedtools_output.stdout);
+    let granges_str = String::from_utf8_lossy(&granges_output.stdout);
 
-    assert_eq!(
-        String::from_utf8_lossy(&bedtools_output.stdout),
-        String::from_utf8_lossy(&granges_output.stdout)
-    );
+    let mut bedtools_ranges: Vec<_> = bedtools_str.split("\n").collect();
+    let mut granges_ranges: Vec<_> = granges_str.split("\n").collect();
+
+    bedtools_ranges.sort();
+    granges_ranges.sort();
+
+    assert_eq!(bedtools_ranges, granges_ranges);
 }

@@ -8,11 +8,11 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use granges::test_utilities::{granges_binary_path, random_bedfile};
 use std::process::Command;
 
-const BED_LENGTH: usize = 10_000;
+const BED_LENGTH: usize = 100_000;
 
 fn bench_range_adjustment(c: &mut Criterion) {
     // create the benchmark group
-    let mut group = c.benchmark_group("slop vs adjust");
+    let mut group = c.benchmark_group("adjust");
 
     // create the test data
     let input_bedfile = random_bedfile(BED_LENGTH);
@@ -56,7 +56,7 @@ fn bench_range_adjustment(c: &mut Criterion) {
 
 fn bench_filter_adjustment(c: &mut Criterion) {
     // create the benchmark group
-    let mut group = c.benchmark_group("intersect vs filter");
+    let mut group = c.benchmark_group("filter");
 
     // create the test data
     let random_bedfile_left_tempfile = random_bedfile(BED_LENGTH);
@@ -99,5 +99,56 @@ fn bench_filter_adjustment(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_filter_adjustment, bench_range_adjustment);
+fn bench_flank(c: &mut Criterion) {
+    // create the benchmark group
+    let mut group = c.benchmark_group("flank");
+
+    // create the test data
+    let random_bedfile_tempfile = random_bedfile(BED_LENGTH);
+    let random_bedfile = random_bedfile_tempfile.path();
+
+    // configure the sample size for the group
+    // group.sample_size(10);
+    group.bench_function("bedtools_flank", |b| {
+        b.iter(|| {
+            let bedtools_output = Command::new("bedtools")
+                .arg("flank")
+                .arg("-g")
+                .arg("tests_data/hg38_seqlens.tsv")
+                .arg("-l")
+                .arg("20")
+                .arg("-r")
+                .arg("30")
+                .arg("-i")
+                .arg(random_bedfile)
+                .output()
+                .expect("bedtools flank failed");
+            assert!(bedtools_output.status.success());
+        });
+    });
+
+    group.bench_function("granges_filter", |b| {
+        b.iter(|| {
+            let granges_output = Command::new(granges_binary_path())
+                .arg("flank")
+                .arg("--genome")
+                .arg("tests_data/hg38_seqlens.tsv")
+                .arg("--left")
+                .arg("20")
+                .arg("--right")
+                .arg("30")
+                .arg(random_bedfile)
+                .output()
+                .expect("granges adjust failed");
+            assert!(granges_output.status.success());
+        });
+    });
+}
+
+criterion_group!(
+    benches,
+    bench_filter_adjustment,
+    bench_range_adjustment,
+    bench_flank,
+);
 criterion_main!(benches);
