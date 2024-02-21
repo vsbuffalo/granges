@@ -55,16 +55,19 @@ impl GenericRangeOperations for RangeEmpty {
         let mut flanking = Vec::new();
         if let Some(left) = left_flank {
             let flank_start = std::cmp::max(self.start.saturating_sub(left), 0);
-            let flank_end = std::cmp::min(self.start + 1, seqlen);
-
-            let left_flank_region = RangeEmpty::new(flank_start, flank_end);
-            flanking.push(left_flank_region);
+            let flank_end = std::cmp::min(self.start, seqlen);
+            if flank_end > flank_start {
+                let left_flank_region = RangeEmpty::new(flank_start, flank_end);
+                flanking.push(left_flank_region);
+            }
         }
         if let Some(right) = right_flank {
-            let flank_start = std::cmp::max(self.end.saturating_sub(1), 0);
+            let flank_start = std::cmp::max(self.end, 0);
             let flank_end = std::cmp::min(self.end + right, seqlen);
-            let right_flank_region = RangeEmpty::new(flank_start, flank_end);
-            flanking.push(right_flank_region);
+            if flank_end > flank_start {
+                let right_flank_region = RangeEmpty::new(flank_start, flank_end);
+                flanking.push(right_flank_region);
+            }
         }
         flanking
     }
@@ -124,16 +127,19 @@ impl GenericRangeOperations for RangeIndexed {
         let mut flanking = Vec::new();
         if let Some(left) = left_flank {
             let flank_start = std::cmp::max(self.start.saturating_sub(left), 0);
-            let flank_end = std::cmp::min(self.start + 1, seqlen);
-
-            let left_flank_region = RangeIndexed::new(flank_start, flank_end, self.index);
-            flanking.push(left_flank_region);
+            let flank_end = std::cmp::min(self.start, seqlen);
+            if flank_end > flank_start {
+                let left_flank_region = RangeIndexed::new(flank_start, flank_end, self.index);
+                flanking.push(left_flank_region);
+            }
         }
         if let Some(right) = right_flank {
-            let flank_start = std::cmp::max(self.end.saturating_sub(1), 0);
+            let flank_start = std::cmp::max(self.end, 0);
             let flank_end = std::cmp::min(self.end + right, seqlen);
-            let right_flank_region = RangeIndexed::new(flank_start, flank_end, self.index);
-            flanking.push(right_flank_region);
+            if flank_end > flank_start {
+                let right_flank_region = RangeIndexed::new(flank_start, flank_end, self.index);
+                flanking.push(right_flank_region);
+            }
         }
         flanking
     }
@@ -193,6 +199,45 @@ impl<U: Clone> AdjustableGenericRange for GenomicRangeRecord<U> {
     }
 }
 
+impl<U: Clone> GenericRangeOperations for GenomicRangeRecord<U> {
+    /// Create flanking regions for this [`GenomicRangeRecord<U>`] range.
+    fn flanking_ranges<R: GenericRange>(
+        &self,
+        left_flank: Option<Position>,
+        right_flank: Option<Position>,
+        seqlen: Position,
+    ) -> Vec<Self> {
+        let mut flanking = Vec::new();
+        if let Some(left) = left_flank {
+            let flank_start = std::cmp::max(self.start.saturating_sub(left), 0);
+            let flank_end = std::cmp::min(self.start, seqlen);
+            if flank_end > flank_start {
+                let left_flank_region = GenomicRangeRecord::new(
+                    self.seqname.clone(),
+                    flank_start,
+                    flank_end,
+                    self.data.clone(),
+                );
+                flanking.push(left_flank_region);
+            }
+        }
+        if let Some(right) = right_flank {
+            let flank_start = std::cmp::max(self.end, 0);
+            let flank_end = std::cmp::min(self.end + right, seqlen);
+            if flank_end > flank_start {
+                let right_flank_region = GenomicRangeRecord::new(
+                    self.seqname.clone(),
+                    flank_start,
+                    flank_end,
+                    self.data.clone(),
+                );
+                flanking.push(right_flank_region);
+            }
+        }
+        flanking
+    }
+}
+
 impl TsvSerialize for GenomicRangeRecord<()> {
     fn to_tsv(&self) -> String {
         format!("{}\t{}\t{}", self.seqname, self.start, self.end)
@@ -219,6 +264,14 @@ impl TsvSerialize for GenomicRangeRecord<()> {
 // }
 
 impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<U> {
+    /// Serialize this [`GenomicRangeRecord<U>`] to TSV, using the recursive [`TsvSerialize`]
+    /// trait method.
+    ///
+    /// Note that this does *not* append the newline — it is up to
+    /// the `U.to_tsv()` trait method implementation. This is design is
+    /// intentional, since one common use case is when `U` is an [`Option<String>`],
+    /// which is the type combination commonly used in lazy parsing. In this case,
+    /// when the data is `None`, that indicates no more columns.
     fn to_tsv(&self) -> String {
         format!(
             "{}\t{}\t{}{}",
@@ -267,6 +320,43 @@ impl AdjustableGenericRange for GenomicRangeEmptyRecord {
     }
     fn set_end(&mut self, end: Position) {
         self.end = end
+    }
+}
+
+impl GenericRangeOperations for GenomicRangeEmptyRecord {
+    /// Create flanking regions for this [`GenomicRangeEmptyRecord`] range.
+    fn flanking_ranges<R: GenericRange>(
+        &self,
+        left_flank: Option<Position>,
+        right_flank: Option<Position>,
+        seqlen: Position,
+    ) -> Vec<Self> {
+        let mut flanking = Vec::new();
+        if let Some(left) = left_flank {
+            let flank_start = std::cmp::max(self.start.saturating_sub(left), 0);
+            let flank_end = std::cmp::min(self.start, seqlen);
+            if flank_end > flank_start {
+                let left_flank_region =
+                    GenomicRangeEmptyRecord::new(self.seqname.clone(), flank_start, flank_end);
+                flanking.push(left_flank_region);
+            }
+        }
+        if let Some(right) = right_flank {
+            let flank_start = std::cmp::max(self.end, 0);
+            let flank_end = std::cmp::min(self.end + right, seqlen);
+            if flank_end > flank_start {
+                let right_flank_region =
+                    GenomicRangeEmptyRecord::new(self.seqname.clone(), flank_start, flank_end);
+                flanking.push(right_flank_region);
+            }
+        }
+        flanking
+    }
+}
+
+impl TsvSerialize for GenomicRangeEmptyRecord {
+    fn to_tsv(&self) -> String {
+        format!("{}\t{}\t{}", self.seqname, self.start, self.end)
     }
 }
 

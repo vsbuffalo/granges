@@ -770,11 +770,11 @@ mod tests {
         let mut gr_left_iter = gr_left.iter_ranges();
         let first_range = gr_left_iter.next().unwrap();
         assert_eq!(first_range.start(), 20);
-        assert_eq!(first_range.end(), 31);
+        assert_eq!(first_range.end(), 30);
 
         let second_range = gr_left_iter.next().unwrap();
         assert_eq!(second_range.start(), 90);
-        assert_eq!(second_range.end(), 101);
+        assert_eq!(second_range.end(), 100);
     }
 
     #[test]
@@ -787,13 +787,16 @@ mod tests {
         let mut gr_left_iter = gr_left.iter_ranges();
         let first_range = gr_left_iter.next().unwrap();
         assert_eq!(first_range.start(), 20);
-        assert_eq!(first_range.end(), 31);
+        assert_eq!(first_range.end(), 30);
+
+        // NOTE: the next flank would have been a zero-width
+        // right range for the first range. But this is skipped,
+        // because it is zero-width. Subtle edge case!
 
         // Now the next should be the new right flank.
         let second_range = gr_left_iter.next().unwrap();
-        assert_eq!(second_range.start(), 49);
-
-        // the end point is the sequence length, since we can only go to end.
-        assert_eq!(second_range.end(), 50);
+        assert_eq!(second_range.start(), 90);
+        let second_range = gr_left_iter.next().unwrap();
+        assert_eq!(second_range.end(), 210);
     }
 }

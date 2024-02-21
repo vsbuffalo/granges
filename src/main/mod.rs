@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use granges::{
-    commands::{granges_adjust, granges_filter, granges_flank},
+    commands::{granges_adjust, granges_filter, granges_flank, ProcessingMode},
     prelude::GRangesError,
     Position, PositionOffset,
 };
@@ -110,6 +110,10 @@ enum Commands {
         /// By default, ranges with sequence names not in the genome file will raise an error.
         #[arg(short = 'f', long)]
         skip_missing: bool,
+
+        /// Processing mode
+        #[arg(long)]
+        in_mem: bool,
     },
 
     #[cfg(feature = "dev-commands")]
@@ -157,6 +161,7 @@ fn run() -> Result<(), GRangesError> {
             right,
             output,
             skip_missing,
+            in_mem,
         }) => {
             if both.is_some() && (left.is_some() || right.is_some()) {
                 let error = clap::Error::raw(
@@ -174,7 +179,20 @@ fn run() -> Result<(), GRangesError> {
                 );
                 return Err(error.into());
             }
-            granges_flank(genome, bedfile, left, right, output.as_ref(), *skip_missing)
+            let mode = if *in_mem {
+                ProcessingMode::InMemory
+            } else {
+                ProcessingMode::Streaming
+            };
+            granges_flank(
+                genome,
+                bedfile,
+                left,
+                right,
+                output.as_ref(),
+                *skip_missing,
+                mode,
+            )
         }
         #[cfg(feature = "dev-commands")]
         Some(Commands::RandomBed {

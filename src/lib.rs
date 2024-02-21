@@ -81,7 +81,7 @@ macro_rules! ensure_eq {
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if !(*left_val == *right_val) {
-                    panic!("{}\nExpected `{}` but found `{}`.", crate::INTERNAL_ERROR_MESSAGE, stringify!($left), stringify!($right));
+                    panic!("{}\nExpected `{}` but found `{}`.", $crate::INTERNAL_ERROR_MESSAGE, stringify!($left), stringify!($right));
 
                 }
             }
@@ -91,7 +91,7 @@ macro_rules! ensure_eq {
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if !(*left_val == *right_val) {
-                    panic!("{}\n{}\nExpected `{}` but found `{}`.", crate::INTERNAL_ERROR_MESSAGE, format_args!($($arg)+), stringify!($left), stringify!($right));
+                    panic!("{}\n{}\nExpected `{}` but found `{}`.", $crate::INTERNAL_ERROR_MESSAGE, format_args!($($arg)+), stringify!($left), stringify!($right));
                 }
             }
         }

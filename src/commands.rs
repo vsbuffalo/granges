@@ -3,12 +3,18 @@ use std::path::PathBuf;
 use crate::{
     io::{parsers::GenomicRangesParser, OutputFile},
     prelude::*,
-    ranges::operations::adjust_range,
+    ranges::{operations::adjust_range, GenomicRangeEmptyRecord, GenomicRangeRecord},
     reporting::{CommandOutput, Report},
     test_utilities::random_granges,
     traits::TsvSerialize,
     Position, PositionOffset,
 };
+
+#[derive(Clone)]
+pub enum ProcessingMode {
+    Streaming,
+    InMemory,
+}
 
 /// Adjust the genomic ranges in a bedfile by some specified amount.
 pub fn granges_adjust(
@@ -200,31 +206,113 @@ pub fn granges_flank(
     right: Option<Position>,
     output: Option<&PathBuf>,
     skip_missing: bool,
+    mode: ProcessingMode,
 ) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
     let seqnames: Vec<String> = genome.keys().cloned().collect();
     let ranges_iter = GenomicRangesFile::parsing_iterator(bedfile)?;
 
     let report = Report::new();
-    match ranges_iter {
-        GenomicRangesParser::Bed3(iter) => {
-            let gr = if skip_missing {
-                GRangesEmpty::from_iter(iter.retain_seqnames(&seqnames), &genome)?
-            } else {
-                GRangesEmpty::from_iter(iter, &genome)?
-            };
-            gr.flanking_ranges(left, right)?.to_tsv(output)?
-        }
-        GenomicRangesParser::Bedlike(iter) => {
-            let gr = if skip_missing {
-                GRanges::from_iter(iter.try_unwrap_data().retain_seqnames(&seqnames), &genome)?
-            } else {
-                GRanges::from_iter(iter.try_unwrap_data(), &genome)?
-            };
-            gr.flanking_ranges(left, right)?.to_tsv(output)?
-        }
-        GenomicRangesParser::Unsupported => {
-            return Err(GRangesError::UnsupportedGenomicRangesFileFormat)
+
+    match mode {
+        // Note: this is kept for benchmarking, to see how costly building GRanges
+        // objects is versus using streaming.
+        ProcessingMode::InMemory => match ranges_iter {
+            GenomicRangesParser::Bed3(iter) => {
+                let gr = if skip_missing {
+                    GRangesEmpty::from_iter(iter.retain_seqnames(&seqnames), &genome)?
+                } else {
+                    GRangesEmpty::from_iter(iter, &genome)?
+                };
+                gr.flanking_ranges(left, right)?.to_tsv(output)?
+            }
+            GenomicRangesParser::Bedlike(iter) => {
+                let gr = if skip_missing {
+                    GRanges::from_iter(iter.try_unwrap_data().retain_seqnames(&seqnames), &genome)?
+                } else {
+                    GRanges::from_iter(iter.try_unwrap_data(), &genome)?
+                };
+                gr.flanking_ranges(left, right)?.to_tsv(output)?
+            }
+            GenomicRangesParser::Unsupported => {
+                return Err(GRangesError::UnsupportedGenomicRangesFileFormat)
+            }
+        },
+        ProcessingMode::Streaming => {
+            // Setup Output stream -- header is None for now (TODO).
+            let output_stream = output.map_or(OutputFile::new_stdout(None), |file| {
+                OutputFile::new(file, None)
+            });
+            let mut writer = output_stream.writer()?;
+
+            match ranges_iter {
+                // FIXME: code redundancy. But too early now to design traits, etc.
+                GenomicRangesParser::Bed3(iter) => {
+                    if skip_missing {
+                        for record in iter.retain_seqnames(&seqnames) {
+                            let range = record?;
+                            let seqname = &range.seqname;
+                            let length = *genome
+                                .get(seqname)
+                                .ok_or(GRangesError::MissingSequence(seqname.to_string()))?;
+
+                            let flanking_ranges = range
+                                .flanking_ranges::<GenomicRangeRecord<String>>(left, right, length);
+                            for flanking_range in flanking_ranges {
+                                writer.write_all(&flanking_range.to_tsv().into_bytes())?;
+                            }
+                        }
+                    } else {
+                        for record in iter {
+                            let range = record?;
+                            let seqname = &range.seqname;
+                            let length = *genome
+                                .get(seqname)
+                                .ok_or(GRangesError::MissingSequence(seqname.to_string()))?;
+
+                            let flanking_ranges = range
+                                .flanking_ranges::<GenomicRangeEmptyRecord>(left, right, length);
+                            for flanking_range in flanking_ranges {
+                                writer.write_all(&flanking_range.to_tsv().into_bytes())?;
+                            }
+                        }
+                    }
+                }
+                GenomicRangesParser::Bedlike(iter) => {
+                    if skip_missing {
+                        for record in iter.retain_seqnames(&seqnames) {
+                            let range = record?;
+                            let seqname = &range.seqname;
+                            let length = *genome
+                                .get(seqname)
+                                .ok_or(GRangesError::MissingSequence(seqname.to_string()))?;
+
+                            let flanking_ranges = range
+                                .flanking_ranges::<GenomicRangeRecord<String>>(left, right, length);
+                            for flanking_range in flanking_ranges {
+                                writer.write_all(&flanking_range.to_tsv().into_bytes())?;
+                            }
+                        }
+                    } else {
+                        for record in iter {
+                            let range = record?;
+                            let seqname = &range.seqname;
+                            let length = *genome
+                                .get(seqname)
+                                .ok_or(GRangesError::MissingSequence(seqname.to_string()))?;
+
+                            let flanking_ranges = range
+                                .flanking_ranges::<GenomicRangeEmptyRecord>(left, right, length);
+                            for flanking_range in flanking_ranges {
+                                writer.write_all(&flanking_range.to_tsv().into_bytes())?;
+                            }
+                        }
+                    }
+                }
+                GenomicRangesParser::Unsupported => {
+                    return Err(GRangesError::UnsupportedGenomicRangesFileFormat)
+                }
+            }
         }
     }
     Ok(CommandOutput::new((), report))
