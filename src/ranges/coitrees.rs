@@ -206,6 +206,20 @@ impl GenericRange for IntervalNode<usize, usize> {
     }
 }
 
+impl<M: Clone + PartialEq> PartialEq for COITrees<M> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.ranges.len() != other.ranges.len() {
+            return false;
+        }
+        let self_ranges = self.ranges.iter();
+        let other_ranges = other.ranges.iter();
+        self_ranges.zip(other_ranges).all(|(r1, r2)| {
+            // NOTE: we really should just implement PartialEq here in coitrees
+            (r1.first == r2.first) && (r1.last == r2.last) && (r1.metadata == r2.metadata)
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use coitrees::{GenericInterval, Interval};

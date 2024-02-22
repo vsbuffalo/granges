@@ -9,7 +9,7 @@ use crate::{error::GRangesError, traits::RangeContainer, Position};
 pub type VecRangesIndexed = VecRanges<RangeIndexed>;
 pub type VecRangesEmpty = VecRanges<RangeEmpty>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct VecRanges<R: Clone> {
     pub(crate) ranges: Vec<R>,
     pub length: Position,

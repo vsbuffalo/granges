@@ -40,7 +40,7 @@ def calculate_ratios(criterion_dir):
             percent_faster = ((bedtools_time - granges_time) / bedtools_time) * 100
             # Format the output to show 3 decimal places
             print(
-                f"{comparison} - Granges is {percent_faster:.3f}% faster than Bedtools"
+                f"{comparison} - GRanges is {percent_faster:.3f}% faster than Bedtools"
             )
 
 

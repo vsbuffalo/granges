@@ -1,16 +1,13 @@
 #![allow(clippy::all)]
 
-use genomap::GenomeMap;
+use crate::{traits::GenericRange, Position};
 
-use crate::{
-    granges::GRanges,
-    iterators::GRangesIterator,
-    ranges::coitrees::COITreesIndexed,
-    traits::{GenericRange, IterableRangeContainer},
-    Position,
-};
-
-pub struct JoinData {
+/// [`LeftGroupedJoin`] contains information about the right ranges
+/// and their degree of overlap with a focal left range. This information
+/// is designed to facilitate downstream statistical sumamries of the
+/// corresponding data in overlapping ranges.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LeftGroupedJoin {
     /// The data index for the left range.
     left: Option<usize>,
 
@@ -30,9 +27,13 @@ pub struct JoinData {
     // representing the side and degree of non-overlap. E.g. a range
     // that overlaps another but overhangs the 3' side of the focal left
     // range by 10bp is +10; if it were 5', it would be -10.
+
+    // left_data: Option<&'a DL>,
+    // right_data: Option<&'a DR>,
 }
 
-impl JoinData {
+impl LeftGroupedJoin {
+    /// Create a new [`LeftGroupedJoin`].
     pub fn new<R: GenericRange>(left_range: &R) -> Self {
         Self {
             left: left_range.index(),
@@ -40,69 +41,128 @@ impl JoinData {
             left_length: left_range.width(),
             right_lengths: Vec::new(),
             overlaps: Vec::new(),
+            // left_data,
+            // right_data,
         }
     }
+    /// Add a right range to this [`LeftGroupedJoin`].
     pub fn add_right<R: GenericRange, Q: GenericRange>(&mut self, left: &R, right: &Q) {
         self.rights.push(right.index());
         self.right_lengths.push(right.width());
         self.overlaps.push(left.overlap_width(right));
     }
+    /// Return whether this left range has any [`LeftGroupedJoin`].
+    pub fn has_overlaps(&self) -> bool {
+        !self.overlaps.is_empty()
+    }
+
+    /// Retrieve the number of right overlaps.
+    pub fn num_overlaps(&self) -> usize {
+        self.overlaps.len()
+    }
 }
 
-pub struct JoinIterator<'a, CL, DL, DR>
-where
-    CL: IterableRangeContainer,
-{
-    seqnames: Vec<String>,
-    left_iter: GRangesIterator<'a, CL>,
-    right_genomic_ranges: &'a GenomeMap<COITreesIndexed>,
-    left_data: Option<&'a DL>,
-    right_data: Option<&'a DR>,
+/// [`JoinData`] contains a [`Vec<LeftGroupedJoin>`] of all overlap
+/// joins, as well as references to the left and right data containers.
+#[derive(Clone, Debug)]
+pub struct JoinData<'a, DL, DR> {
+    pub joins: Vec<LeftGroupedJoin>,
+    pub left_data: Option<DL>,
+    pub right_data: Option<&'a DR>,
 }
 
-impl<'a, CL, DL: 'a, DR> JoinIterator<'a, CL, DL, DR>
-where
-    CL: IterableRangeContainer,
-{
-    pub fn new(left: &'a GRanges<CL, DL>, right: &'a GRanges<COITreesIndexed, DR>) -> Self {
-        let seqnames = left.seqnames();
-        let left_iter = left.iter_ranges();
-        let left_data = left.data.as_ref();
-        let right_data = right.data.as_ref();
-        let right_ranges = &right.ranges;
-        Self {
-            seqnames,
-            left_iter,
-            right_genomic_ranges: right_ranges,
+impl<'a, DL, DR> JoinData<'a, DL, DR> {
+    /// Create a new [`JoinData`].
+    pub fn new(left_data: Option<DL>, right_data: Option<&'a DR>) -> Self {
+        let joins = Vec::new();
+        JoinData {
+            joins,
             left_data,
             right_data,
         }
     }
-}
 
-impl<'a, CL, DL, DR> Iterator for JoinIterator<'a, CL, DL, DR>
-where
-    CL: IterableRangeContainer,
-{
-    type Item = JoinData;
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(left_range) = self.left_iter.next() {
-            let seqname = &self.seqnames[left_range.seqname_index];
-            let mut join_data = JoinData::new(&left_range);
-            if let Some(right_ranges) = self.right_genomic_ranges.get(&seqname) {
-                right_ranges.query(left_range.start, left_range.end, |interval| {
-                    join_data.add_right(&left_range, interval);
-                });
-            }
-            Some(join_data)
-        } else {
-            None
+    /// Push the [`LeftGroupedJoin`] to joins.
+    pub fn push(&mut self, join: LeftGroupedJoin) {
+        self.joins.push(join)
+    }
+
+    /// Get the total number of joins.
+    pub fn len(&self) -> usize {
+        self.joins.len()
+    }
+
+    /// Return whether the [`JoinData`] object is empty (contains no ranges).
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Create an iterator over the joins.
+    pub fn iter(&'a self) -> JoinDataIterator<'a, DL, DR> {
+        JoinDataIterator {
+            inner: self.joins.iter(),
+            left_data: self.left_data.as_ref(),
+            right_data: self.right_data,
         }
     }
 }
 
-//
-//
-// pub fn left_join<CL, CR, DL, DR>(left: GRanges<CL, DL>, right: GRanges<CR, DR>) -> JoinIterator<DL, DR> {
-//
-// }
+pub struct JoinDataIterator<'a, DL, DR> {
+    inner: std::slice::Iter<'a, LeftGroupedJoin>,
+    pub left_data: Option<&'a DL>,
+    pub right_data: Option<&'a DR>,
+}
+
+impl<'a, DL, DR> Iterator for JoinDataIterator<'a, DL, DR> {
+    type Item = &'a LeftGroupedJoin;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ranges::RangeIndexed;
+
+    use super::{JoinData, LeftGroupedJoin};
+
+    #[test]
+    fn test_join_data_new() {
+        let left_data = vec![1, 2];
+        let right_data = vec![4, 8];
+        let mut jd = JoinData::new(Some(&left_data), Some(&right_data));
+        assert_eq!(jd.len(), 0);
+
+        let left = RangeIndexed::new(0, 10, 1);
+        let mut join = LeftGroupedJoin::new(&left);
+        let right = RangeIndexed::new(8, 10, 1);
+        join.add_right(&left, &right);
+        jd.push(join);
+        assert_eq!(jd.len(), 1);
+    }
+
+    #[test]
+    fn test_join_iter() {
+        let left_data = vec![1, 2];
+        let right_data = vec![4, 8];
+
+        let mut jd = JoinData::new(Some(&left_data), Some(&right_data));
+
+        let left = RangeIndexed::new(0, 10, 1);
+        let mut join = LeftGroupedJoin::new(&left);
+        let right = RangeIndexed::new(8, 10, 1);
+        join.add_right(&left, &right);
+        jd.push(join);
+
+        let right = RangeIndexed::new(9, 11, 1);
+        let mut join = LeftGroupedJoin::new(&left);
+        join.add_right(&left, &right);
+        jd.push(join);
+
+        let mut iter = jd.iter();
+        assert_eq!(iter.next().unwrap().num_overlaps(), 1);
+        assert_eq!(iter.next().unwrap().num_overlaps(), 1);
+        assert_eq!(iter.next(), None);
+    }
+}

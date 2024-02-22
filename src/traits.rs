@@ -29,21 +29,13 @@ pub trait GenomicRangesTsvSerialize<'a, C: RangeContainer> {
     fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError>;
 }
 
-///// Traits for [`GRanges`] types that can be built from an iterator.
-//pub trait GenomicRangesOperationsExtended<C: RangeContainer> {
-//    type DataContainerType;
-//    type DataElementType;
-//    /// Build a new [`GRanges`] object from an iterator.
-//    fn from_iter<I>(iter: I, seqlens: &IndexMap<String, Position>) -> Result<GRanges<C, Self::DataContainerType>, GRangesError> where I: Iterator<Item=Result<GenomicRangeRecord<Self::DataElementType>, GRangesError>>;
-//}
-
 /// The [`GenericRange`] trait defines common functionality for all range types.
 pub trait GenericRange: Clone {
     fn start(&self) -> Position;
     fn end(&self) -> Position;
     fn index(&self) -> Option<usize>;
     fn width(&self) -> Position {
-        self.end() - self.start() - 1
+        self.end() - self.start()
     }
     /// Calculate how many basepairs overlap this range and other.
     fn overlap_width<R: GenericRange>(&self, other: &R) -> Position {
@@ -65,6 +57,11 @@ pub trait GenericRange: Clone {
         } else {
             None
         }
+    }
+
+    /// Return a tuple version of this range.
+    fn as_tuple(&self) -> (Position, Position, Option<usize>) {
+        (self.start(), self.end(), self.index())
     }
 }
 

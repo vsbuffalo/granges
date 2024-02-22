@@ -58,6 +58,7 @@
 
 use std::{collections::HashSet, path::PathBuf};
 
+use coitrees::IntervalNode;
 use genomap::GenomeMap;
 use indexmap::IndexMap;
 
@@ -65,6 +66,7 @@ use crate::{
     ensure_eq,
     io::OutputFile,
     iterators::GRangesIterator,
+    join::{JoinData, LeftGroupedJoin},
     prelude::GRangesError,
     ranges::{
         coitrees::{COITrees, COITreesEmpty, COITreesIndexed},
@@ -198,9 +200,10 @@ where
         });
         let mut writer = output.writer()?;
 
+        let data_ref = self.data.as_ref().ok_or(GRangesError::NoDataContainer)?;
         let seqnames = self.seqnames();
         for range in self.iter_ranges() {
-            let record = range.to_record(&seqnames, self.data.as_ref().unwrap());
+            let record = range.to_record(&seqnames, data_ref);
             writeln!(writer, "{}", record.to_tsv())?;
         }
         Ok(())
@@ -293,6 +296,7 @@ where
         let mut gr: GRanges<VecRangesIndexed, T> = GRanges::new_vec(&self.seqlens());
         let seqlens = self.seqlens();
         for (seqname, ranges) in self.ranges.iter() {
+            // unwrap should be safe, since seqname is produced from ranges iterator.
             let seqlen = seqlens.get(seqname).unwrap();
             for range in ranges.iter_ranges() {
                 let flanking_ranges = range.flanking_ranges::<RangeIndexed>(left, right, *seqlen);
@@ -317,12 +321,94 @@ impl<R: GenericRange> GRangesEmpty<VecRanges<R>> {
         GRangesEmpty(GRanges::new_vec(seqlens))
     }
 
+    /// Sort the ranges by position for this [`GRangesEmpty`] object.
+    ///
+    /// This operation is consuming and returns the sorted [`GRangesEmpty`] object.
     pub fn sort(self) -> Self {
         GRangesEmpty(self.0.sort())
     }
 
     pub fn shink(&mut self) {
         todo!()
+    }
+}
+
+impl GRangesEmpty<VecRangesEmpty> {
+    /// Make a [`GRangesEmpty<VecRanges>`] with ranges from (possibly overlapping) windows.
+    ///
+    /// # Arguments
+    ///  * `seqlens`: the sequence (e.g. chromosome) lengths.
+    ///  * `width`: the window width, in basepairs.
+    ///  * `chop`: whether to cut off the last window, if there is a remainder less than the width.
+    ///  * `step`: the step length, in basepairs; if None, step is `width`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use granges::prelude::*;
+    ///
+    /// let sl = seqlens!( "chr1" => 11);
+    ///
+    /// // no step don't chop off remainder
+    /// let gr = GRangesEmpty::from_windows(&sl, 5, None, false).unwrap();
+    ///
+    /// let mut range_iter = gr.iter_ranges();
+    /// assert_eq!(range_iter.next().unwrap().as_tuple(), (0,  5, None));
+    /// assert_eq!(range_iter.next().unwrap().as_tuple(), (5,  10, None));
+    /// assert_eq!(range_iter.next().unwrap().as_tuple(), (10,  11, None));
+    ///
+    /// // no step do chop off remainder
+    /// let gr = GRangesEmpty::from_windows(&sl, 5, None, true).unwrap();
+    ///
+    /// let mut range_iter = gr.iter_ranges();
+    /// assert_eq!(range_iter.next().unwrap().as_tuple(), (0,  5, None));
+    /// assert_eq!(range_iter.next().unwrap().as_tuple(), (5,  10, None));
+    ///
+    /// // with step don't chop off remainder
+    /// let gr = GRangesEmpty::from_windows(&sl, 5, Some(2), false).unwrap();
+    ///
+    /// let mut range_iter = gr.iter_ranges();
+    /// assert_eq!(range_iter.next().unwrap().as_tuple(), (0,  5, None));
+    /// assert_eq!(range_iter.next().unwrap().as_tuple(), (2,  7, None));
+    /// assert_eq!(range_iter.next().unwrap().as_tuple(), (4,  9, None));
+    /// assert_eq!(range_iter.next().unwrap().as_tuple(), (6,  11, None));
+    ///
+    /// ```
+    pub fn from_windows(
+        seqlens: &IndexMap<String, Position>,
+        width: u32,
+        step: Option<u32>,
+        chop: bool,
+    ) -> Result<GRangesEmpty<VecRangesEmpty>, GRangesError> {
+        let mut gr: GRangesEmpty<VecRangesEmpty> = GRangesEmpty::new_vec(seqlens);
+
+        // have we encountered a remainder chunk?
+
+        let mut remainder = false;
+        // iterate over each chromosome and create windows
+        for (seqname, len) in seqlens {
+            let mut start = 0;
+            while start < *len {
+                let mut end = start + width - 1;
+
+                if end >= *len {
+                    if chop {
+                        break;
+                    } else {
+                        end = std::cmp::min(end, len - 1);
+                    }
+                }
+                if end - start + 1 < width {
+                    if remainder {
+                        break;
+                    }
+                    remainder = true;
+                }
+                gr.push_range(seqname, start, end + 1)?;
+                start += step.unwrap_or(width);
+            }
+        }
+        Ok(gr)
     }
 }
 
@@ -357,6 +443,7 @@ where
         let mut gr: GRangesEmpty<VecRangesEmpty> = GRangesEmpty::new_vec(&self.seqlens());
         let seqlens = self.seqlens();
         for (seqname, ranges) in self.0.ranges.iter() {
+            // unwrap should be safe, since seqname is produced from ranges iterator.
             let seqlen = seqlens.get(seqname).unwrap();
             for range in ranges.iter_ranges() {
                 let flanking_ranges = range.flanking_ranges::<RangeIndexed>(left, right, *seqlen);
@@ -381,10 +468,51 @@ impl<U> GRanges<VecRangesIndexed, Vec<U>> {
         if self.data.is_none() {
             self.data = Some(Vec::new());
         }
+        let data_ref = self.data.as_mut().ok_or(GRangesError::NoDataContainer)?;
         // push data to the vec data container, getting the index
         let index: usize = {
-            self.data.as_mut().unwrap().push(data);
-            self.data.as_mut().unwrap().len() - 1 // new data index
+            data_ref.push(data);
+            data_ref.len() - 1 // new data index
+        };
+        // push an indexed range
+        let range = RangeIndexed::new(start, end, index);
+        let range_container = self
+            .ranges
+            .get_mut(seqname)
+            .ok_or(GRangesError::MissingSequence(seqname.to_string()))?;
+        range_container.push_range(range);
+        Ok(())
+    }
+}
+
+impl<'a, DL, DR> GRanges<VecRangesIndexed, JoinData<'a, DL, DR>> {
+    /// Push a genomic range with its data to the range and data containers in a [`GRanges] object.
+    ///
+    /// Note that this has slightly different behavior than other [`GRanges.push_range()`]
+    /// methods, in that it requires that the [`JoinData`] object be initialized first.
+    /// This is because were this not to be the case, each call to `push_ranges()` would
+    /// require references to the right and left data containers. This is not ergonomic.
+    ///
+    /// # Panics
+    /// This will panic if the developer did not initialize the new [`JoinData`]
+    /// correctly. This is not handled with a user error since it reflects a
+    /// developer error.
+    pub fn push_range_with_join(
+        &mut self,
+        seqname: &str,
+        start: Position,
+        end: Position,
+        data: LeftGroupedJoin,
+    ) -> Result<(), GRangesError> {
+        if self.data.is_none() {
+            // unlike push_range()
+            panic!("Internal error: JoinData not initialized.");
+        }
+        let data_ref = self.data.as_mut().ok_or(GRangesError::NoDataContainer)?;
+        // push data to the vec data container, getting the index
+        let index: usize = {
+            data_ref.push(data);
+            data_ref.len() - 1 // new data index
         };
         // push an indexed range
         let range = RangeIndexed::new(start, end, index);
@@ -403,7 +531,8 @@ where
     T: TsvSerialize,
     <T as IndexedDataContainer<'a>>::Item: TsvSerialize,
 {
-    ///
+    /// Write this [`GRanges<VecRanges, T>`] object to a TSV file, using the
+    /// [`TsvSerialize`] trait methods defiend for the items in `T`.
     pub fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError> {
         // output stream -- header is None for now (TODO)
         let output = output.map_or(OutputFile::new_stdout(None), |file| {
@@ -412,11 +541,48 @@ where
         let mut writer = output.writer()?;
 
         let seqnames = self.seqnames();
+        let data_ref = self.data.as_ref().ok_or(GRangesError::NoDataContainer)?;
         for range in self.iter_ranges() {
-            let record = range.to_record(&seqnames, self.data.as_ref().unwrap());
+            let record = range.to_record(&seqnames, data_ref);
             writeln!(writer, "{}", record.to_tsv())?;
         }
         Ok(())
+    }
+
+    /// Conduct a left overlap join, consuming self and returning a new
+    /// [`GRanges<VecRangesIndexed, JoinData>>`].
+    ///
+    /// The [`JoinData`] container contains references to both left and right
+    /// data containers and a [`Vec<OverlapJoin>`]. Each [`OverlapJoin`] represents
+    /// a summary of an overlap, which downstream operations use to calculate
+    /// statistics using the information about overlaps.
+    pub fn left_overlaps<M: Clone + 'a, DR: 'a>(
+        self,
+        right: &'a impl AsGRangesRef<'a, COITrees<M>, DR>,
+    ) -> Result<GRanges<VecRanges<RangeIndexed>, JoinData<'a, T, DR>>, GRangesError>
+    where
+        IntervalNode<M, usize>: GenericRange,
+    {
+        let mut gr: GRanges<VecRangesIndexed, JoinData<'a, T, DR>> =
+            GRanges::new_vec(&self.seqlens());
+
+        let right_ref = right.as_granges_ref();
+        gr.data = Some(JoinData::new(self.data, right_ref.data.as_ref()));
+
+        for (seqname, left_ranges) in self.ranges.iter() {
+            for left_range in left_ranges.iter_ranges() {
+                // Left join: every left range gets a JoinData.
+                let mut join_data = LeftGroupedJoin::new(&left_range);
+                if let Some(right_ranges) = right_ref.ranges.get(seqname) {
+                    right_ranges.query(left_range.start(), left_range.end(), |right_range| {
+                        // NOTE: right_range is a coitrees::IntervalNode.
+                        join_data.add_right(&left_range, right_range);
+                    });
+                }
+                gr.push_range_with_join(seqname, left_range.start, left_range.end, join_data)?;
+            }
+        }
+        Ok(gr)
     }
 }
 
@@ -475,6 +641,44 @@ impl<T> GRanges<VecRanges<RangeIndexed>, T> {
             .ok_or(GRangesError::MissingSequence(seqname.to_string()))?;
         range_container.push_range(range);
         Ok(())
+    }
+}
+
+impl<'a> GRangesEmpty<VecRangesEmpty> {
+    /// Conduct a left overlap join, consuming self and returning a new
+    /// [`GRanges<VecRangesIndexed, JoinData>>`].
+    ///
+    /// The [`JoinData`] container contains references to both left and right
+    /// data containers and a [`Vec<OverlapJoin>`]. Each [`OverlapJoin`] represents
+    /// a summary of an overlap, which downstream operations use to calculate
+    /// statistics using the information about overlaps.
+    pub fn left_overlaps<M: Clone + 'a, DR: 'a>(
+        self,
+        right: &'a impl AsGRangesRef<'a, COITrees<M>, DR>,
+    ) -> Result<GRanges<VecRanges<RangeIndexed>, JoinData<'a, (), DR>>, GRangesError>
+    where
+        IntervalNode<M, usize>: GenericRange,
+    {
+        let mut gr: GRanges<VecRangesIndexed, JoinData<'a, (), DR>> =
+            GRanges::new_vec(&self.seqlens());
+
+        let right_ref = right.as_granges_ref();
+        gr.data = Some(JoinData::new(None, right_ref.data.as_ref()));
+
+        for (seqname, left_ranges) in self.0.ranges.iter() {
+            for left_range in left_ranges.iter_ranges() {
+                // Left join: every left range gets a JoinData.
+                let mut join_data = LeftGroupedJoin::new(&left_range);
+                if let Some(right_ranges) = right_ref.ranges.get(seqname) {
+                    right_ranges.query(left_range.start(), left_range.end(), |right_range| {
+                        // NOTE: right_range is a coitrees::IntervalNode.
+                        join_data.add_right(&left_range, right_range);
+                    });
+                }
+                gr.push_range_with_join(seqname, left_range.start, left_range.end, join_data)?;
+            }
+        }
+        Ok(gr)
     }
 }
 
@@ -625,14 +829,13 @@ where
     ) -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError> {
         let mut gr: GRanges<VecRangesIndexed, Vec<U>> = GRanges::new_vec(&self.seqlens());
 
-        let data = std::mem::take(&mut self.data).unwrap();
+        let right_ref = right.as_granges_ref();
+        let data = std::mem::take(&mut self.data).ok_or(GRangesError::NoDataContainer)?;
 
         let mut old_indices = HashSet::new(); // the old indices to *keep*
         let mut new_indices = Vec::new();
-
         let mut current_index = 0;
 
-        let right_ref = right.as_granges_ref();
         for (seqname, left_ranges) in self.ranges.iter() {
             for left_range in left_ranges.iter_ranges() {
                 if let Some(right_ranges) = right_ref.ranges.get(seqname) {
@@ -647,6 +850,7 @@ where
                             left_range.end(),
                             current_index,
                         )?;
+                        // unwrap should be safe, since this is an indexed GRanges
                         old_indices.insert(left_range.index().unwrap());
                         new_indices.push(current_index);
                         current_index += 1;
@@ -690,11 +894,51 @@ where
     }
 }
 
+/// [`PartialEq`] for [`GRanges`] objects.
+///
+/// This is a more powerful comparison operator than [`GRanges.is_equal_to()`], since it will first
+/// convert one type of ranges to another.
+///
+/// A [`GRanges`] object is considered equal to another if:
+/// 1. Same number or ranges (this is checked first for efficiency).
+/// 2. Same metadata.
+/// 3. Same ranges. This requires converting ranges from different range container map types to a
+///    [`VecRanges`]. **Warning**: this is currently memory intensive.
+///
+/// # Developer Notes
+/// This uses type conversion in the range container types; see
+/// [`crate::granges::ranges::comparison.rs`].
+impl<CL, CR, DL, DR> PartialEq<GRanges<CR, DR>> for GRanges<CL, DL>
+where
+    CL: IterableRangeContainer + PartialEq<CL>,
+    CR: IterableRangeContainer + PartialEq<CR>,
+    DL: PartialEq<DR>,
+{
+    fn eq(&self, other: &GRanges<CR, DR>) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+
+        let data_matches = match (&self.data, &other.data) {
+            (Some(self_data), Some(other_data)) => self_data == other_data,
+            (None, None) => true,
+            _ => false,
+        };
+
+        let self_ranges = self.iter_ranges();
+        let other_ranges = other.iter_ranges();
+        let ranges_eq = self_ranges.zip(other_ranges).all(|(r1, r2)| r1 == r2);
+        ranges_eq && data_matches
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
+        join::LeftGroupedJoin,
         prelude::*,
         test_utilities::{granges_test_case_01, granges_test_case_02, random_vecranges},
+        Position,
     };
 
     #[test]
@@ -798,5 +1042,136 @@ mod tests {
         assert_eq!(second_range.start(), 90);
         let second_range = gr_left_iter.next().unwrap();
         assert_eq!(second_range.end(), 210);
+    }
+
+    #[test]
+    fn test_from_windows() {
+        let sl = seqlens!( "chr1" => 35);
+        // Test chop
+        let gr = GRangesEmpty::from_windows(&sl, 10, None, true).unwrap();
+        assert_eq!(gr.len(), 3, "{:?}", gr);
+        dbg!(&gr);
+        gr.iter_ranges().for_each(|r| assert_eq!(r.width(), 10));
+
+        // Test no chop
+        let gr = GRangesEmpty::from_windows(&sl, 10, None, false).unwrap();
+        assert_eq!(gr.iter_ranges().last().unwrap().width(), 5);
+
+        // Test sliding with step of 2, with chop
+        let sl = seqlens!( "chr1" => 21);
+        let gr = GRangesEmpty::from_windows(&sl, 10, Some(2), true).unwrap();
+        let mut expected_ranges_chop: Vec<(String, Position, Position)> = vec![
+            ("chr1", 0, 10),
+            ("chr1", 2, 12),
+            ("chr1", 4, 14),
+            ("chr1", 6, 16),
+            ("chr1", 8, 18),
+            ("chr1", 10, 20),
+        ]
+        .into_iter()
+        .map(|(seq, s, e)| (seq.to_string(), s, e))
+        .collect();
+        let seqnames = sl.keys().map(|x| x.to_string()).collect::<Vec<_>>();
+        let actual_ranges: Vec<(String, Position, Position)> = gr
+            .iter_ranges()
+            .map(|r| (r.seqname(&seqnames), r.start(), r.end()))
+            .collect();
+        assert_eq!(actual_ranges, expected_ranges_chop);
+
+        // The same as above, without chop -- goes to seqlen with little remainder.
+        let gr = GRangesEmpty::from_windows(&sl, 10, Some(2), false).unwrap();
+        expected_ranges_chop.push(("chr1".to_string(), 12, 21));
+        let actual_ranges: Vec<(String, Position, Position)> = gr
+            .iter_ranges()
+            .map(|r| (r.seqname(&seqnames), r.start(), r.end()))
+            .collect();
+
+        assert_eq!(actual_ranges, expected_ranges_chop);
+    }
+
+    #[test]
+    fn test_left_overlaps() {
+        let sl = seqlens!("chr1" => 50);
+        let windows: GRangesEmpty<VecRangesEmpty> =
+            GRangesEmpty::from_windows(&sl, 10, None, true).unwrap();
+
+        let windows_len = windows.len();
+
+        let mut right_gr: GRanges<VecRangesIndexed, Vec<f64>> = GRanges::new_vec(&sl);
+        right_gr.push_range("chr1", 1, 2, 1.1).unwrap();
+        right_gr.push_range("chr1", 5, 7, 2.8).unwrap();
+        right_gr.push_range("chr1", 21, 35, 1.2).unwrap();
+        right_gr.push_range("chr1", 23, 24, 2.9).unwrap();
+        let right_gr = right_gr.into_coitrees().unwrap();
+
+        let joined_results = windows.left_overlaps(&right_gr).unwrap();
+
+        // get join data
+        let data = joined_results.data.unwrap();
+
+        // check is left join
+        assert_eq!(data.len(), windows_len);
+
+        let mut join_iter = data.iter();
+        assert_eq!(join_iter.next().unwrap().num_overlaps(), 2);
+        assert_eq!(join_iter.next().unwrap().num_overlaps(), 0);
+        assert_eq!(join_iter.next().unwrap().num_overlaps(), 2);
+        assert_eq!(join_iter.next().unwrap().num_overlaps(), 1);
+        // rest are empty TODO should check
+    }
+
+    #[test]
+    fn test_partial_eq() {
+        // check equality case
+        let gr1 = granges_test_case_01();
+        let gr2 = granges_test_case_01();
+        assert_eq!(gr1, gr2);
+
+        // check minor difference case
+        let sl = seqlens!( "chr1" => 30, "chr2" => 100 );
+        let mut gr3 = GRanges::<VecRangesIndexed, Vec<f64>>::new_vec(&sl);
+        gr3.push_range("chr1", 0, 4, 0.1).unwrap(); // one bp diff end
+        gr3.push_range("chr1", 4, 7, 8.1).unwrap();
+        gr3.push_range("chr1", 10, 17, 10.1).unwrap();
+        gr3.push_range("chr2", 10, 20, 3.7).unwrap();
+        gr3.push_range("chr2", 18, 32, 1.1).unwrap();
+
+        assert_ne!(gr1, gr3);
+
+        // check differential order case
+        let sl = seqlens!( "chr1" => 30, "chr2" => 100 );
+        let mut gr4 = GRanges::<VecRangesIndexed, Vec<f64>>::new_vec(&sl);
+        gr4.push_range("chr1", 4, 7, 8.1).unwrap();
+        gr4.push_range("chr1", 0, 5, 1.1).unwrap(); // swapped with above
+        gr4.push_range("chr1", 10, 17, 10.1).unwrap();
+        gr4.push_range("chr2", 10, 20, 3.7).unwrap();
+        gr4.push_range("chr2", 18, 32, 1.1).unwrap();
+
+        assert_ne!(gr3, gr4);
+
+        // check manual case (for typos)
+        let sl = seqlens!( "chr1" => 30, "chr2" => 100 );
+        let mut gr5 = GRanges::<VecRangesIndexed, Vec<f64>>::new_vec(&sl);
+        gr5.push_range("chr1", 0, 5, 1.1).unwrap();
+        gr5.push_range("chr1", 4, 7, 8.1).unwrap();
+        gr5.push_range("chr1", 10, 17, 10.1).unwrap();
+        gr5.push_range("chr2", 10, 20, 3.7).unwrap();
+        gr5.push_range("chr2", 18, 32, 1.1).unwrap();
+
+        assert_eq!(gr1, gr5)
+    }
+
+    #[test]
+    fn test_is_equal_to() {
+        let vec_orig = granges_test_case_01();
+        assert_eq!(vec_orig, vec_orig);
+
+        let mut vec = vec_orig.clone();
+        vec.push_range("chr1", 0, 10, 3.4).unwrap();
+        assert_ne!(vec_orig, vec);
+
+        let vec = vec.sort();
+        let coit = vec.clone().into_coitrees().unwrap();
+        assert_eq!(coit, vec);
     }
 }

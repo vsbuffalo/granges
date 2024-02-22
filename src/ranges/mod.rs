@@ -379,6 +379,11 @@ impl GenomicRangeIndexedRecord {
             index,
         }
     }
+    /// Using the *corresponding ordered* sequence names the `seqname_index` indices
+    /// correspond to, get the sequence name.
+    pub fn seqname(&self, seqnames: &[String]) -> String {
+        seqnames[self.seqname_index].clone()
+    }
     pub fn to_record<'a, T>(
         self,
         seqnames: &[String],
@@ -488,6 +493,12 @@ mod tests {
         let range_a = RangeEmpty::new(5, 8);
         let range_b = RangeEmpty::new(4, 6);
         assert_eq!(range_a.overlap_range(&range_b), Some((5, 6)));
+    }
+
+    #[test]
+    fn test_width() {
+        let range_a = RangeEmpty::new(5, 8);
+        assert_eq!(range_a.width(), 3);
     }
 
     #[test]
