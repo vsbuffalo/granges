@@ -115,7 +115,32 @@ enum Commands {
         #[arg(long)]
         in_mem: bool,
     },
+    Map {
+        /// A TSV genome file of chromosome names and their lengths
+        #[arg(short, long, required = true)]
+        genome: PathBuf,
 
+        /// The "left" BED-like TSV file
+        #[arg(short, long, required = true)]
+        left: PathBuf,
+
+        /// The "right" BED-like TSV file
+        #[arg(short, long, required = true)]
+        right: PathBuf,
+
+        /// An optional output file (standard output will be used if not specified)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Skip ranges from sequences (e.g. chromosomes) not present in the genome file.
+        /// By default, ranges with sequence names not in the genome file will raise an error.
+        #[arg(short = 'f', long)]
+        skip_missing: bool,
+
+        /// Processing mode
+        #[arg(long)]
+        in_mem: bool,
+    },
     #[cfg(feature = "dev-commands")]
     RandomBed {
         /// a TSV genome file of chromosome names and their lengths
@@ -194,6 +219,17 @@ fn run() -> Result<(), GRangesError> {
                 mode,
             )
         }
+        Some(Commands::Map {
+            genome,
+            left,
+            right,
+            output,
+            skip_missing,
+            in_mem,
+        }) => {
+
+        }
+ 
         #[cfg(feature = "dev-commands")]
         Some(Commands::RandomBed {
             genome,

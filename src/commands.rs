@@ -124,8 +124,8 @@ pub fn granges_filter(
 
             let right_gr = right_gr.into_coitrees()?;
 
-            let intersection = left_gr.filter_overlaps(&right_gr)?;
-            intersection.to_tsv(output)?;
+            let semijoin = left_gr.filter_overlaps(&right_gr)?;
+            semijoin.to_tsv(output)?;
 
             Ok(CommandOutput::new((), report))
         }
@@ -146,8 +146,8 @@ pub fn granges_filter(
 
             let right_gr = right_gr.into_coitrees()?;
 
-            let intersection = left_gr.filter_overlaps(&right_gr)?;
-            intersection.to_tsv(output)?;
+            let semijoin = left_gr.filter_overlaps(&right_gr)?;
+            semijoin.to_tsv(output)?;
 
             Ok(CommandOutput::new((), report))
         }
@@ -166,8 +166,8 @@ pub fn granges_filter(
 
             let right_gr = right_gr.into_coitrees()?;
 
-            let intersection = left_gr.filter_overlaps(&right_gr)?;
-            intersection.to_tsv(output)?;
+            let semijoin = left_gr.filter_overlaps(&right_gr)?;
+            semijoin.to_tsv(output)?;
 
             Ok(CommandOutput::new((), report))
         }
@@ -318,13 +318,122 @@ pub fn granges_flank(
     Ok(CommandOutput::new((), report))
 }
 
+
+pub fn granges_map(
+    seqlens: impl Into<PathBuf>,
+    left_path: &PathBuf,
+    right_path: &PathBuf,
+    output: Option<&PathBuf>,
+    skip_missing: bool)
+    -> Result<CommandOutput<()>, GRangesError> {
+        let genome = read_seqlens(seqlens)?;
+        let seqnames: Vec<String> = genome.keys().cloned().collect();
+        let mut report = Report::new();
+
+        let left_iter = GenomicRangesFile::parsing_iterator(left_path)?;
+        let right_iter = GenomicRangesFile::parsing_iterator(right_path)?;
+
+
+        match (left_iter, right_iter) {
+            (GenomicRangesParser::Bed5(left), GenomicRangesParser::Bed5(right)) => {
+                let left_gr;
+                let right_gr;
+
+                if skip_missing {
+                    left_gr = GRanges::from_iter(left.retain_seqnames(&seqnames), &genome)?;
+                    right_gr = GRanges::from_iter(right.retain_seqnames(&seqnames), &genome)?;
+                } else {
+                    left_gr = GRanges::from_iter(left, &genome)?;
+                    right_gr = GRanges::from_iter(right, &genome)?;
+                }
+
+                let right_gr = right_gr.into_coitrees()?;
+
+                let left_join = left_gr.left_overlaps(&right_gr)?;
+
+                left_join.to_tsv(output)?;
+
+                Ok(CommandOutput::new((), report))
+            }
+            (GenomicRangesParser::Bed3(left), GenomicRangesParser::Bedlike(right)) => {
+                todo!();
+                let left_gr;
+                let right_gr;
+
+                if skip_missing {
+                    left_gr = GRangesEmpty::from_iter(left.retain_seqnames(&seqnames), &genome)?;
+                    right_gr = GRanges::from_iter(
+                        right.try_unwrap_data().retain_seqnames(&seqnames),
+                        &genome,
+                        )?;
+                } else {
+                    left_gr = GRangesEmpty::from_iter(left, &genome)?;
+                    right_gr = GRanges::from_iter(right.try_unwrap_data(), &genome)?;
+                }
+
+                let right_gr = right_gr.into_coitrees()?;
+
+                let intersection = left_gr.filter_overlaps(&right_gr)?;
+                intersection.to_tsv(output)?;
+
+                Ok(CommandOutput::new((), report))
+            }
+            (GenomicRangesParser::Bedlike(left), GenomicRangesParser::Bed3(right)) => {
+                let left_gr;
+                let right_gr;
+
+                if skip_missing {
+                    left_gr =
+                        GRanges::from_iter(left.try_unwrap_data().retain_seqnames(&seqnames), &genome)?;
+                    right_gr = GRangesEmpty::from_iter(right.retain_seqnames(&seqnames), &genome)?;
+                } else {
+                    left_gr = GRanges::from_iter(left.try_unwrap_data(), &genome)?;
+                    right_gr = GRangesEmpty::from_iter(right, &genome)?;
+                }
+
+                let right_gr = right_gr.into_coitrees()?;
+
+                let intersection = left_gr.filter_overlaps(&right_gr)?;
+                intersection.to_tsv(output)?;
+
+                Ok(CommandOutput::new((), report))
+            }
+            (GenomicRangesParser::Bedlike(left), GenomicRangesParser::Bedlike(right)) => {
+                todo!();
+                let left_gr;
+                let right_gr;
+
+                if skip_missing {
+                    left_gr =
+                        GRanges::from_iter(left.try_unwrap_data().retain_seqnames(&seqnames), &genome)?;
+                    right_gr = GRanges::from_iter(
+                        right.try_unwrap_data().retain_seqnames(&seqnames),
+                        &genome,
+                        )?;
+                } else {
+                    left_gr = GRanges::from_iter(left.try_unwrap_data(), &genome)?;
+                    right_gr = GRanges::from_iter(right.try_unwrap_data(), &genome)?;
+                }
+
+                let right_gr = right_gr.into_coitrees()?;
+
+                let intersection = left_gr.filter_overlaps(&right_gr)?;
+                intersection.to_tsv(output)?;
+
+                Ok(CommandOutput::new((), report))
+            }
+            _ => Err(GRangesError::UnsupportedGenomicRangesFileFormat),
+        }
+    }
+
+
 /// Generate a random BED-like file with genomic ranges.
 pub fn granges_random_bed(
     seqlens: impl Into<PathBuf>,
     num: usize,
     output: Option<impl Into<PathBuf>>,
     sort: bool,
-) -> Result<CommandOutput<()>, GRangesError> {
+    ) -> Result<CommandOutput<()>, GRangesError> {
     // get the genome info
     let genome = read_seqlens(seqlens)?;
 

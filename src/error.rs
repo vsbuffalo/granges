@@ -24,6 +24,8 @@ pub enum GRangesError {
     InvalidColumnType(String),
     #[error("Genome file is invalid: {0}")]
     InvalidGenomeFile(String),
+    #[error("Invalid BED string: must be either '+', '-', or '.'")]
+    InvalidString,
 
     // BedlikeIterator errors
     #[error("GenomicRangeRecord encountered with None data in try_unwrap_data()")]

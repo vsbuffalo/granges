@@ -802,17 +802,6 @@ impl<CL, U> GRanges<CL, Vec<U>>
 where
     CL: IterableRangeContainer,
 {
-    //pub fn left_overlaps<DR>(self, right: &'a GRanges<COITreesIndexed, DR>)
-    //-> GRanges<CL, JoinIterator<'a, CL, Vec<U>, DR>> {
-    //    //let mut obj = GRanges {
-    //    //    ranges: self.ranges,
-    //    //    data: None,
-    //    //};
-    //    //obj.data = Some(JoinIterator::new(&obj, &right));
-    //    //obj
-    //    todo!()
-    //}
-
     /// Filter out ranges that do *not* have at least overlap with the `right` ranges.
     ///
     /// In database lingo, this is a type of *filtering join*, in particular a *semi join*.
@@ -935,7 +924,6 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{
-        join::LeftGroupedJoin,
         prelude::*,
         test_utilities::{granges_test_case_01, granges_test_case_02, random_vecranges},
         Position,
