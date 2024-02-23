@@ -1,11 +1,9 @@
-//! Range Operations.
+//! Range operations.
 //!
-//! - [`adjust()`]: Adjust range start and end positions.
-
 use crate::{traits::AdjustableGenericRange, Position, PositionOffset};
 
-/// Adjusts the coordinates of a range, ensuring the adjusted range is within [0, length]
-/// and returning `None` if the range has zero width after adjustment.
+/// Adjusts the start and end coordinates of a range, ensuring the adjusted range is
+/// within [0, length] and returning `None` if the range has zero width after adjustment.
 pub fn adjust_range<R: AdjustableGenericRange>(
     mut range: R,
     start_delta: PositionOffset,

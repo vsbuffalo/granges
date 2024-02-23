@@ -1,3 +1,5 @@
+//! The [`VecRanges<R>`] type, and the [`VecRangesIndexed`] and [`VecRangesEmpty`] type aliases.
+//!
 use super::operations::adjust_range;
 use super::{validate_range, RangeEmpty, RangeIndexed};
 use crate::traits::{

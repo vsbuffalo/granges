@@ -1,3 +1,5 @@
+//! [`LeftGroupedJoin`], [`JoinData`], and [`JoinDataIterator`] types for overlaps.
+//!
 #![allow(clippy::all)]
 
 use crate::{traits::GenericRange, Position};
@@ -45,7 +47,10 @@ impl LeftGroupedJoin {
             // right_data,
         }
     }
-    /// Add a right range to this [`LeftGroupedJoin`].
+    /// Add a right (overlapping) range to this [`LeftGroupedJoin`].
+    ///
+    // Note: in principle, this can be called on *non-overlapping* right ranges too,
+    // for a full-outer join.
     pub fn add_right<R: GenericRange, Q: GenericRange>(&mut self, left: &R, right: &Q) {
         self.rights.push(right.index());
         self.right_lengths.push(right.width());
@@ -107,6 +112,11 @@ impl<'a, DL, DR> JoinData<'a, DL, DR> {
     }
 }
 
+/// An iterator over the [`LeftGroupedJoin`] types that represent
+/// information about overlaps right ranges have with a particular left range.
+///
+/// This also contains references to the left and right data containers, for
+/// better ergonomics in downstream data processing.
 pub struct JoinDataIterator<'a, DL, DR> {
     inner: std::slice::Iter<'a, LeftGroupedJoin>,
     pub left_data: Option<&'a DL>,

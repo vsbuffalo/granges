@@ -1,4 +1,4 @@
-//! Range and Range Containers.
+//! Range types and Range Containers.
 //!
 //!
 

@@ -84,7 +84,7 @@ pub fn random_vecranges(n: usize) -> VecRanges<RangeEmpty> {
     vr
 }
 
-/// Build a random [`GRanges<VecRangesEmpty, ()`] using a set of
+/// Build a random [`GRangesEmpty`] using a set of
 /// sequence lengths.
 pub fn random_granges(
     seqlens: &IndexMap<String, Position>,

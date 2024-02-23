@@ -1,10 +1,12 @@
-use std::num::{ParseFloatError, ParseIntError};
-
+//! The [`GRangesError`] `enum` definition and error messages.
+//!
+use crate::Position;
 use genomap::GenomeMapError;
+use std::num::{ParseFloatError, ParseIntError};
 use thiserror::Error;
 
-use crate::Position;
-
+/// The [`GRangesError`] defines the standard set of errors that should
+/// be passed to the user.
 #[derive(Debug, Error)]
 pub enum GRangesError {
     // IO related errors

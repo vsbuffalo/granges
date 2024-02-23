@@ -1,4 +1,4 @@
-//! Input/Output file handling with [`InputFile`] and [`OutputFile`].
+//! Input/Output file handling with [`InputStream`] and [`OutputStream`].
 //!
 //! These types abstract over reading/writing both plaintext and gzip-compressed
 //! input/output.
@@ -20,7 +20,7 @@ use crate::Position;
 pub fn read_seqlens(
     filepath: impl Into<PathBuf>,
 ) -> Result<IndexMap<String, Position>, GRangesError> {
-    let input_file = InputFile::new(filepath);
+    let input_file = InputStream::new(filepath);
     let reader = input_file.reader()?;
 
     let mut seqlens = IndexMap::new();
@@ -55,20 +55,20 @@ fn is_gzipped_file(file_path: impl Into<PathBuf>) -> io::Result<bool> {
 /// This abstracts how data is read in, allowing for both plaintext and gzip-compressed input
 /// to be read through a common interface.
 #[derive(Clone, Debug)]
-pub struct InputFile {
+pub struct InputStream {
     pub filepath: PathBuf,
     pub comments: Option<Vec<String>>,
     pub header: Option<String>,
     pub skip_lines: usize,
 }
 
-impl InputFile {
-    /// Constructs a new `InputFile`.
+impl InputStream {
+    /// Constructs a new `InputStream`.
     ///
     /// # Arguments
     ///
     /// * `filepath` - A string slice that holds the path to the file. If the file extension is
-    /// `.gz`, `InputFile` will automatically uncompress the input.
+    /// `.gz`, `InputStream` will automatically uncompress the input.
     pub fn new(filepath: impl Into<PathBuf>) -> Self {
         Self {
             filepath: filepath.into(),
@@ -167,18 +167,18 @@ enum OutputDestination {
 ///
 /// This struct is used to handle operations on an output file, such as writing to the file.
 /// This abstracts writing both plaintext and gzip-compressed files.
-pub struct OutputFile {
+pub struct OutputStream {
     destination: OutputDestination,
     pub header: Option<Vec<String>>,
 }
 
-impl OutputFile {
-    /// Constructs a new `OutputFile`.
+impl OutputStream {
+    /// Constructs a new `OutputStream`.
     ///
     /// # Arguments
     ///
     /// * `filepath` - A string slice that holds the path to the file. If the file extension is
-    /// `.gz`, `OutputFile` will automatically write gzip-compressed output.
+    /// `.gz`, `OutputStream` will automatically write gzip-compressed output.
     /// * `header` - An optional vector of strings representing commented header lines to be written to the file.
     pub fn new(filepath: impl Into<PathBuf>, header: Option<Vec<String>>) -> Self {
         Self {
@@ -187,7 +187,7 @@ impl OutputFile {
         }
     }
 
-    /// Constructs a new [`OutputFile`] for standard output.
+    /// Constructs a new [`OutputStream`] for standard output.
     pub fn new_stdout(header: Option<Vec<String>>) -> Self {
         Self {
             destination: OutputDestination::Stdout,
