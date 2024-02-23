@@ -1,3 +1,8 @@
+//! Iterators over genomic ranges and their data.
+//!
+//! Note that *parsing iterators* are in [`parsers`].
+//!
+//! [`parsers`]: crate::io::parsers
 use genomap::GenomeMap;
 
 use crate::{
@@ -5,7 +10,7 @@ use crate::{
     traits::{GenericRange, IterableRangeContainer, RangeContainer},
 };
 
-/// An iterator yielding [`RangeIndexedRecord`], which store
+/// An iterator yielding [`GenomicRangeIndexedRecord`], which store
 /// indices to the sequence names and data container.
 ///
 /// # Developer Notes

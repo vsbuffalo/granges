@@ -18,6 +18,8 @@ use crate::{
 
 /// The [`AsGRangesRef`] trait improves the ergonomics of working
 /// with both [`GRanges`] and [`GRangesEmpty`] function arguments.
+///
+/// [`GRangesEmpty`]: crate::granges::GRanges
 pub trait AsGRangesRef<'a, C, T> {
     fn as_granges_ref(&'a self) -> &'a GRanges<C, T>;
 }
@@ -95,6 +97,9 @@ pub trait AdjustableGenericRange: GenericRange {
 
 /// Defines functionality common to all range containers, e.g. [`VecRanges<R>`] and
 /// [`COITrees`].
+///
+/// [`VecRanges<R>`]: crate::ranges::vec::VecRanges
+/// [`COITrees`]: crate::ranges::coitrees::COITrees
 pub trait RangeContainer {
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
@@ -103,10 +108,13 @@ pub trait RangeContainer {
     fn sequence_length(&self) -> Position;
 }
 
+/// Marker trait for data container.
+/// This is presently not used for much, but is useful to indicate certain
+/// type combinations are data containers.
 pub trait DataContainer {}
 
-/// Defines functionality for filtering [`RangeRecord`] entries based on their
-/// sequence names. [`RangeRecord`] are predominantly used in reading in data,
+/// Defines functionality for filtering [`GenomicRangeRecord`] entries based on their
+/// sequence names. [`GenomicRangeRecord`] are predominantly used in reading in data,
 /// so these trait methods simplify excluding or retaining ranges based on what
 /// sequence (i.e. chromosome) they are on.
 pub trait GeneralRangeRecordIterator<R: GenericRange>:
@@ -141,7 +149,7 @@ where
     fn iter_ranges(&self) -> Box<dyn Iterator<Item = Self::RangeType> + '_>;
 }
 
-/// The [`IntoIterableRangeContainer`] trait defines common functionality for *consuming* iterating
+/// The [`IntoIterableRangesContainer`] trait defines common functionality for *consuming* iterating
 /// over the range types in range containers.
 pub trait IntoIterableRangesContainer<R> {
     fn into_iter_ranges(self) -> Box<dyn Iterator<Item = R>>;

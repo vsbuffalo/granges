@@ -1,33 +1,36 @@
-//! # Design
+//! The [`GRanges<R, T>`] and [`GRangesEmpty`] types, and associated functionality.
 //!
 //!
 //! # [`GRanges<R, T>`] Generic Types
 //!
 //! [`GRanges<R, T>`] types are generic over:
 //!
-//! 1. Their **range container** (`R`). This is because different operations to be fast, and thus
-//!    need different data structures. The [`GRanges`] methods allow for efficient conversion of
-//!    one range type to another.
+//! 1. Their **range container** (`R`). This is because for some range operations to be fast, they
+//!    need to be converted to different data structures. The [`GRanges`] methods allow for efficient
+//!    conversion of one range type to another (e.g. [`GRanges::into_coitrees()`].
 //!
 //! 2. The *optional* **data container** (`T`). The data container exists if the ranges have some
 //!    associated data. When range *do* have data, there is an index that associates each range
 //!    with its data element in the data container.
 //!
-//! This brings up the most important thing to know about working with the GRanges library: because
-//! of the emphasis on on knowing all types at compile-time (which has performance benefits over
-//! runtime type polymorphism), it must be known at compile-time whether ranges have data or not.
-//!
-//! In most applications this is known: a user specifies, for example, a GTF file and the contents
-//! are parsed and processed accordingly. However, it's not unfeasible to imagine that one would
-//! need runtime "polymorphism" over BED3 input (which would lead to a [`GRanges`] object without
-//! data) and BED* (e.g. BED5, BED12, etc) input. (For example, the GRanges command line tool
-//! `granges` runs into this problem — see it's implementation for examples.)
-//!
-//! These two possibilities are handled with two differently typed parsing iterators:
-//! [`Bed3Iterator`] and [`BedlikeIterator`]. These yield different parsed range types,
-//! [`GenomicRangeEmptyRecord`] and [`GenomicRangeRecord`], respectively.
+//! Because GRanges is designed to be a compile-time library (which has performance benefits over
+//! runtime type polymorphism), it must be known at compile-time whether a [`GRanges<R, T>`] container
+//! will have associated data or not. The special [`GRangesEmpty`] type represents (and wraps)
+//! [`GRanges<R, T>`] objects that do not have data.
 //!
 //!
+//!
+//!
+//! TODO
+//!
+//! **High-level data types**: A key feature of GRanges design is that a single type of ranges are
+//! contained in the range containers. By knowing that every range in a range container either has
+//! an index to a data element in the data container or it does not ahead of time simplifies
+//! downstream ergonomics tremendously.
+//!
+//! **Emphasis on compile-time**: For this, let's consider a common problem: a bioinformatics tool
+//! needs to read in a BED-like file that has a variable, unknown at compile time, number of
+//! columns.
 //!
 //! This is an important concept when working with [`GRanges<R, T>`] types:
 //!
@@ -55,6 +58,10 @@
 //!
 //! Because at compile-time, the types *need* to be known, there are a few options here.
 //!
+//!
+//! [`Bed3Iterator`]: crate::io::parsers::Bed3Iterator
+//! [`BedlikeIterator`]: crate::io::parsers::BedlikeIterator
+//! [`GRanges::into_coitrees`]: crate::granges::GRanges::into_coitrees
 
 use std::{collections::HashSet, path::PathBuf};
 
@@ -64,7 +71,7 @@ use indexmap::IndexMap;
 
 use crate::{
     ensure_eq,
-    io::OutputFile,
+    io::OutputStream,
     iterators::GRangesIterator,
     join::{JoinData, LeftGroupedJoin},
     prelude::GRangesError,
@@ -143,7 +150,7 @@ impl<'a, C> AsGRangesRef<'a, C, ()> for GRangesEmpty<C> {
 
 impl<'a, C, T> AsGRangesRef<'a, C, T> for GRanges<C, T> {
     /// Return a reference of a [`GRanges<C, T>`] object. This is essentially
-    /// a pass-through method. [`IntoGRangesRef`] is not needed in this case,
+    /// a pass-through method. [`AsGRangesRef`] is not needed in this case,
     /// but is needed elsewhere (see the implementation for [`GRangesEmpty`]) to
     /// improve the ergonomics of working with [`GRanges`] and [`GRangesEmpty`] types.
     fn as_granges_ref(&'a self) -> &'a GRanges<C, T> {
@@ -195,8 +202,8 @@ where
     /// Write
     fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError> {
         // output stream -- header is None for now (TODO)
-        let output = output.map_or(OutputFile::new_stdout(None), |file| {
-            OutputFile::new(file, None)
+        let output = output.map_or(OutputStream::new_stdout(None), |file| {
+            OutputStream::new(file, None)
         });
         let mut writer = output.writer()?;
 
@@ -214,8 +221,8 @@ impl<'a, R: IterableRangeContainer> GenomicRangesTsvSerialize<'a, R> for GRanges
     /// Output a BED3 file for for this data-less [`GRanges<R, ()>`].
     fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError> {
         // output stream -- header is None for now (TODO)
-        let output = output.map_or(OutputFile::new_stdout(None), |file| {
-            OutputFile::new(file, None)
+        let output = output.map_or(OutputStream::new_stdout(None), |file| {
+            OutputStream::new(file, None)
         });
         let mut writer = output.writer()?;
 
@@ -505,7 +512,6 @@ impl<'a, DL, DR> GRanges<VecRangesIndexed, JoinData<'a, DL, DR>> {
         data: LeftGroupedJoin,
     ) -> Result<(), GRangesError> {
         if self.data.is_none() {
-            // unlike push_range()
             panic!("Internal error: JoinData not initialized.");
         }
         let data_ref = self.data.as_mut().ok_or(GRangesError::NoDataContainer)?;
@@ -535,8 +541,8 @@ where
     /// [`TsvSerialize`] trait methods defiend for the items in `T`.
     pub fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError> {
         // output stream -- header is None for now (TODO)
-        let output = output.map_or(OutputFile::new_stdout(None), |file| {
-            OutputFile::new(file, None)
+        let output = output.map_or(OutputStream::new_stdout(None), |file| {
+            OutputStream::new(file, None)
         });
         let mut writer = output.writer()?;
 
@@ -550,10 +556,10 @@ where
     }
 
     /// Conduct a left overlap join, consuming self and returning a new
-    /// [`GRanges<VecRangesIndexed, JoinData>>`].
+    /// [`GRanges<VecRangesIndexed, JoinData>`].
     ///
     /// The [`JoinData`] container contains references to both left and right
-    /// data containers and a [`Vec<OverlapJoin>`]. Each [`OverlapJoin`] represents
+    /// data containers and a [`Vec<LeftGroupedJoin>`]. Each [`LeftGroupedJoin`] represents
     /// a summary of an overlap, which downstream operations use to calculate
     /// statistics using the information about overlaps.
     pub fn left_overlaps<M: Clone + 'a, DR: 'a>(
@@ -646,10 +652,10 @@ impl<T> GRanges<VecRanges<RangeIndexed>, T> {
 
 impl<'a> GRangesEmpty<VecRangesEmpty> {
     /// Conduct a left overlap join, consuming self and returning a new
-    /// [`GRanges<VecRangesIndexed, JoinData>>`].
+    /// [`GRanges<VecRangesIndexed, JoinData>`].
     ///
     /// The [`JoinData`] container contains references to both left and right
-    /// data containers and a [`Vec<OverlapJoin>`]. Each [`OverlapJoin`] represents
+    /// data containers and a [`Vec<LeftGroupedJoin>`]. Each [`LeftGroupedJoin`] represents
     /// a summary of an overlap, which downstream operations use to calculate
     /// statistics using the information about overlaps.
     pub fn left_overlaps<M: Clone + 'a, DR: 'a>(
@@ -809,7 +815,7 @@ where
     /// Science](https://r4ds.hadley.nz/joins.html#filtering-joins) for more information.
     ///
     /// Note that this consumes the `self` [`GRanges`] object, turning it into a new
-    /// [`GRanges<VecRangesIndexed, Vec<U>`]. The data container is rebuilt from indices
+    /// [`GRanges<VecRangesIndexed, Vec<U>>`]. The data container is rebuilt from indices
     /// into a new [`Vec<U>`] where `U` is the associated type [`IndexedDataContainer::Item`],
     /// which represents the individual data element in the data container.
     pub fn filter_overlaps<'a, M: Clone + 'a, DR: 'a>(

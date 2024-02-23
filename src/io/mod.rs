@@ -1,11 +1,9 @@
-//! Input/Output
-//!
+//! Types and methods for reading and parsing input and writing output.
 
 pub mod file;
-pub mod noodles;
 pub mod parsers;
 
-pub use file::{InputFile, OutputFile};
+pub use file::{InputStream, OutputStream};
 pub use parsers::{
     Bed3Iterator, BedlikeIterator, GenomicRangesFile, GenomicRangesParser, TsvRecordIterator,
 };

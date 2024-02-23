@@ -1,3 +1,7 @@
+//! The [`COITrees<M>`] type.
+//!
+//! This wraps the functionality og the [`coitrees`] library by Daniel C. Jones.
+//!
 use coitrees::{BasicCOITree, GenericInterval, Interval, IntervalNode, IntervalTree};
 
 use crate::{
@@ -59,12 +63,12 @@ impl<M: Clone> COITrees<M> {
         self.ranges.query_count(first, end - 1)
     }
 
-    /// Return the number of ranges in this [`COITreeRangeContainer`] container.
+    /// Return the number of ranges in this [`COITrees`] container.
     pub fn len(&self) -> usize {
         self.ranges.len()
     }
 
-    /// Return whether the [`COITreeRangeContainer`] object is empty (contains no ranges).
+    /// Return whether the [`COITrees`] object is empty (contains no ranges).
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }

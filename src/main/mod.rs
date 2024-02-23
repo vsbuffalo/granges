@@ -227,9 +227,9 @@ fn run() -> Result<(), GRangesError> {
             skip_missing,
             in_mem,
         }) => {
-
+            unimplemented!()
         }
- 
+
         #[cfg(feature = "dev-commands")]
         Some(Commands::RandomBed {
             genome,
