@@ -2,6 +2,8 @@
 //!
 //!
 
+use std::ops::Range;
+
 use crate::{
     error::GRangesError,
     traits::{
@@ -388,9 +390,9 @@ impl GenomicRangeIndexedRecord {
         self,
         seqnames: &[String],
         data: &'a T,
-    ) -> GenomicRangeRecord<<T as IndexedDataContainer<'a>>::Item>
+    ) -> GenomicRangeRecord<<T as IndexedDataContainer>::Item<'a>>
     where
-        T: IndexedDataContainer<'a> + TsvSerialize,
+        T: IndexedDataContainer + TsvSerialize,
     {
         let data = data.get_value(self.index().unwrap());
 
@@ -432,16 +434,14 @@ impl AdjustableGenericRange for GenomicRangeIndexedRecord {
     }
 }
 
-/// Validates whether a given range is valid for accessing a sequence of a given `length`.
+/// Validates whether a given range is valid for accessing a sequence of a given `length`,
+/// raising a [`GRangesError`] if not.
 ///
 /// # Arguments
 ///
 /// * `range` - The range to validate.
 /// * `length` - The length of the sequence.
 ///
-/// # Returns
-///
-/// * `bool` - `true` if the range is valid for the sequence; otherwise, `false`.
 pub fn validate_range(
     start: Position,
     end: Position,
@@ -457,6 +457,36 @@ pub fn validate_range(
         ));
     }
     Ok(())
+}
+
+/// Try converting genome positions to an right-exclusive [`std::ops::Range`], with
+/// checking that the range is valid. This is predominantly used for building [`std::ops::Range`]
+/// items that are used to slice (e.g. nucleotide) sequences.
+///
+/// # Arugments
+/// * `first` - the 0-indexed first basepair's position.
+/// * `last` - the 0-indexed, last basepair's position (right-inclusive end position).
+/// * `len` - the length of the sequence.
+///
+/// # Returns
+/// [`Some(Range<usize>)`] if the conversion could be be done successfully, otherwise
+/// returns an error.
+pub fn try_range(
+    start: Position,
+    end: Position,
+    length: Position,
+) -> Result<Range<usize>, GRangesError> {
+    if start >= end {
+        return Err(GRangesError::InvalidGenomicRange(start, end));
+    }
+    if end > length {
+        return Err(GRangesError::InvalidGenomicRangeForSequence(
+            start, end, length,
+        ));
+    }
+    let start_usize: usize = start.try_into().unwrap();
+    let end_usize: usize = end.try_into().unwrap();
+    Ok(start_usize..end_usize)
 }
 
 #[cfg(test)]

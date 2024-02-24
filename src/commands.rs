@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use crate::{
+    data::operations::Operation,
     io::{parsers::GenomicRangesParser, OutputStream},
     prelude::*,
     ranges::{operations::adjust_range, GenomicRangeEmptyRecord, GenomicRangeRecord},
@@ -401,6 +402,7 @@ pub fn granges_map(
     seqlens: impl Into<PathBuf>,
     left_path: &PathBuf,
     right_path: &PathBuf,
+    operations: Vec<Operation>,
     output: Option<&PathBuf>,
     skip_missing: bool,
 ) -> Result<CommandOutput<()>, GRangesError> {

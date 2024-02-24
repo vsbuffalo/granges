@@ -5,15 +5,20 @@ use crate::traits::IndexedDataContainer;
 /// Trait methods for the commonly-used `Vec<U>` data container.
 ///
 /// Note that the associated `Item` type is always a *reference* to the data elements.
-impl<'a, U> IndexedDataContainer<'a> for Vec<U>
+impl<U> IndexedDataContainer for Vec<U>
 where
-    U: Clone + 'a,
+    U: Clone,
 {
-    type Item = &'a U;
+    type Item<'a> = &'a U where Self: 'a;
+    type OwnedItem = U;
     type Output = Vec<U>;
 
-    fn get_value(&'a self, index: usize) -> Self::Item {
+    fn get_value(&self, index: usize) -> Self::Item<'_> {
         self.get(index).unwrap()
+    }
+
+    fn get_owned(&self, index: usize) -> <Self as IndexedDataContainer>::OwnedItem {
+        self.get(index).unwrap().to_owned()
     }
 
     fn len(&self) -> usize {

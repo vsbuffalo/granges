@@ -3,6 +3,8 @@
 
 use std::path::PathBuf;
 
+use indexmap::IndexMap;
+
 use crate::{
     error::GRangesError,
     granges::GRanges,
@@ -175,15 +177,19 @@ pub trait IntoIterableRangesContainer<R> {
 /// protect against this edge case would force most `GRanges`
 /// functions to return a `Result`. This would clog the API usage, so
 /// we opt to just panic.
-pub trait IndexedDataContainer<'a>: DataContainer {
+pub trait IndexedDataContainer: DataContainer {
     // note: I don't think we can refactor out this lifetime,
     // since it is needed often for associated types
-    type Item;
+    type Item<'a>
+    where
+        Self: 'a;
+    type OwnedItem;
     type Output;
     // this type is needed to reference the core underlying type,
     // eg to handle reference types
     fn is_valid_index(&self, index: usize) -> bool;
-    fn get_value(&'a self, index: usize) -> <Self as IndexedDataContainer>::Item;
+    fn get_value(&self, index: usize) -> <Self as IndexedDataContainer>::Item<'_>;
+    fn get_owned(&self, index: usize) -> <Self as IndexedDataContainer>::OwnedItem;
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
@@ -200,6 +206,44 @@ pub trait IndexedDataContainer<'a>: DataContainer {
 
     /// Create a new data container using a set of range indices.
     fn new_from_indices(&self, indices: &[usize]) -> Self::Output;
+}
+
+/// The Sequences trait defines generic functionality for
+/// per-basepair data, e.g. nucleotide sequences or some
+/// per-basepair numeric score.
+pub trait Sequences<'a> {
+    type Container: 'a;
+    type Slice;
+
+    fn seqnames(&self) -> Vec<String>;
+    fn get_sequence(&'a self, seqname: &str) -> Result<Self::Container, GRangesError>;
+    fn get_sequence_length(&self, seqname: &str) -> Result<Position, GRangesError>;
+
+    /// Evaluate a function on a [`Sequences::Slice`] of a sequence.
+    ///
+    /// # Arguments
+    /// * `func` - a function that takes a `Self::Slice` and returns a [`Result<V, GRangesError>`]
+    /// * `seqname` - sequence name.
+    /// * `start` - a [`Position`] start position.
+    /// * `end` - a [`Position`] *inclusive* end position.
+    fn region_apply<V, F>(
+        &'a self,
+        func: F,
+        seqname: &str,
+        start: Position,
+        end: Position,
+    ) -> Result<V, GRangesError>
+    where
+        F: Fn(<Self as Sequences>::Slice) -> V;
+
+    fn seqlens(&self) -> Result<IndexMap<String, Position>, GRangesError> {
+        let mut seqlens = IndexMap::new();
+        for seqname in self.seqnames() {
+            let seqlen = self.get_sequence_length(&seqname)?;
+            seqlens.insert(seqname, seqlen);
+        }
+        Ok(seqlens)
+    }
 }
 
 /// Defines how to serialize something to TSV.

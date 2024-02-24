@@ -24,8 +24,8 @@
 //! To understand how GRanges could be useful in processing genomic data, it's helpful to first
 //! understand the overall design of this software library.
 //!
-//! Nearly all range data is loaded into GRanges using **parsing iterators** ([parsers]).
-//! Parsing iterators read input data from some bioinformatics file format (e.g. `.bed`,
+//! Nearly all range data is loaded into GRanges using **parsing iterators** (see the [parsers]
+//! module). Parsing iterators read input data from some bioinformatics file format (e.g. `.bed`,
 //! `.gtf.gz`, etc) and it then goes down one of two paths:
 //!
 //!  1. Streaming mode: the entire data set is never read into memory all at once, but rather
@@ -37,7 +37,7 @@
 //!     [`GRanges`] objects then provide high-level in-memory methods for working with this
 //!     genomic data.
 //!
-//! Both modes then write something to output: a TSV of some statistic calculated on the
+//! Both modes then eventually write something to output: a TSV of some statistic calculated on the
 //! genomic data, the output of 10 million block bootstraps, or the coefficients of
 //! linear regressions run every kilobase on sequence data.
 //!
@@ -46,8 +46,8 @@
 //!
 //! ```text
 //!   +-------+           +-------------------+           +----------------------+          
-//!   | Input |  ----->   |     Iterator      |  ----->   |    GRanges object    | 
-//!   +------ +           | (streaming mode)  |           |   (in-memory mode)   |          
+//!   | Input |  ----->   |  Parsing Iterator |  ----->   |    GRanges object    |
+//!   +------ +           |  (streaming mode) |           |   (in-memory mode)   |          
 //!                       +-------------------+           +----------------------+          
 //!                                 |                                |            
 //!                                 |                                |            
@@ -107,6 +107,7 @@ pub mod io;
 pub mod iterators;
 pub mod join;
 pub mod ranges;
+pub mod sequences;
 pub mod test_utilities;
 pub mod traits;
 
@@ -116,6 +117,17 @@ pub mod commands;
 pub mod reporting;
 
 /// The main position type in GRanges.
+///
+/// This type is currently an unwrapped [`u32`]. To my knowledge,
+/// no chromosome is known to have a length larger than [`u32::MAX`],
+/// which is 4,294,967,295, i.e. 4.29 Gigabases.
+///
+/// # Stability
+/// This type may change either due to (1) wrapping in a newtype,
+/// and/or (2) become a [`u64`] if there is a species with a
+/// single chromosome's length surpassing [`u32::MAX`].
+///
+/// [`u32::Max`]: std::u32::MAX
 pub type Position = u32;
 
 /// The main *signed* position type in GRanges, to represent offsets (e.g.

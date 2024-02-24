@@ -3,7 +3,7 @@
 use granges::{
     commands::granges_random_bed,
     prelude::GenomicRangesFile,
-    test_utilities::{granges_binary_path, random_bedfile, temp_bedfile},
+    test_utilities::{granges_binary_path, random_bed3file, temp_bedfile},
 };
 use std::process::Command;
 
@@ -78,8 +78,8 @@ fn test_against_bedtools_slop() {
 fn test_against_bedtools_intersect_wa() {
     let num_ranges = 1_000_000;
 
-    let random_bedfile_left_tempfile = random_bedfile(num_ranges);
-    let random_bedfile_right_tempfile = random_bedfile(num_ranges);
+    let random_bedfile_left_tempfile = random_bed3file(num_ranges);
+    let random_bedfile_right_tempfile = random_bed3file(num_ranges);
     let random_bedfile_left = random_bedfile_left_tempfile.path();
     let random_bedfile_right = random_bedfile_right_tempfile.path();
 
@@ -133,7 +133,7 @@ fn test_against_bedtools_intersect_wa() {
 fn test_against_bedtools_flank() {
     let num_ranges = 1_000;
 
-    let random_bedfile_tempfile = random_bedfile(num_ranges);
+    let random_bedfile_tempfile = random_bed3file(num_ranges);
     let random_bedfile = random_bedfile_tempfile.path();
 
     granges_random_bed(

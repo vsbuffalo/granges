@@ -5,7 +5,7 @@
 //! ensure the output is the *exact* same.
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use granges::test_utilities::{granges_binary_path, random_bedfile};
+use granges::test_utilities::{granges_binary_path, random_bed3file};
 use std::process::Command;
 
 const BED_LENGTH: usize = 100_000;
@@ -15,7 +15,7 @@ fn bench_range_adjustment(c: &mut Criterion) {
     let mut group = c.benchmark_group("adjust");
 
     // create the test data
-    let input_bedfile = random_bedfile(BED_LENGTH);
+    let input_bedfile = random_bed3file(BED_LENGTH);
 
     // configure the sample size for the group
     // group.sample_size(10);
@@ -59,8 +59,8 @@ fn bench_filter_adjustment(c: &mut Criterion) {
     let mut group = c.benchmark_group("filter");
 
     // create the test data
-    let random_bedfile_left_tempfile = random_bedfile(BED_LENGTH);
-    let random_bedfile_right_tempfile = random_bedfile(BED_LENGTH);
+    let random_bedfile_left_tempfile = random_bed3file(BED_LENGTH);
+    let random_bedfile_right_tempfile = random_bed3file(BED_LENGTH);
     let random_bedfile_left = random_bedfile_left_tempfile.path();
     let random_bedfile_right = random_bedfile_right_tempfile.path();
 
@@ -104,7 +104,7 @@ fn bench_flank(c: &mut Criterion) {
     let mut group = c.benchmark_group("flank");
 
     // create the test data
-    let random_bedfile_tempfile = random_bedfile(BED_LENGTH);
+    let random_bedfile_tempfile = random_bed3file(BED_LENGTH);
     let random_bedfile = random_bedfile_tempfile.path();
 
     // configure the sample size for the group

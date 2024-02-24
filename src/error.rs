@@ -2,7 +2,10 @@
 //!
 use crate::Position;
 use genomap::GenomeMapError;
-use std::num::{ParseFloatError, ParseIntError};
+use std::{
+    num::{ParseFloatError, ParseIntError},
+    string::FromUtf8Error,
+};
 use thiserror::Error;
 
 /// The [`GRangesError`] defines the standard set of errors that should
@@ -47,6 +50,14 @@ pub enum GRangesError {
 
     #[error("Invalid GRanges object: no data container.")]
     NoDataContainer,
+
+    // Sequences related errors
+    #[error("Sequence name '{0}' was not found.")]
+    MissingSequenceName(String),
+
+    // FASTA/noodles related errors
+    #[error("Error encountered in trying to convert bytes to UTF8 string.")]
+    FromUtf8Error(#[from] FromUtf8Error),
 
     // Command line tool related errors
     #[error("Unsupported genomic range format")]

@@ -2,7 +2,10 @@
 //!
 #![allow(clippy::all)]
 
-use crate::{traits::GenericRange, Position};
+use crate::{
+    traits::{GenericRange, IndexedDataContainer},
+    Position,
+};
 
 /// [`LeftGroupedJoin`] contains information about the right ranges
 /// and their degree of overlap with a focal left range. This information
@@ -14,7 +17,8 @@ pub struct LeftGroupedJoin {
     left: Option<usize>,
 
     /// A `Vec` of the indices for the overlapping right ranges.
-    rights: Vec<Option<usize>>,
+    /// This is `None` if the right ranges do not have a data container.
+    rights: Option<Vec<usize>>,
 
     /// The length of the left range.
     left_length: Position,
@@ -39,7 +43,7 @@ impl LeftGroupedJoin {
     pub fn new<R: GenericRange>(left_range: &R) -> Self {
         Self {
             left: left_range.index(),
-            rights: Vec::new(),
+            rights: None,
             left_length: left_range.width(),
             right_lengths: Vec::new(),
             overlaps: Vec::new(),
@@ -52,7 +56,10 @@ impl LeftGroupedJoin {
     // Note: in principle, this can be called on *non-overlapping* right ranges too,
     // for a full-outer join.
     pub fn add_right<R: GenericRange, Q: GenericRange>(&mut self, left: &R, right: &Q) {
-        self.rights.push(right.index());
+        if let Some(right_index) = right.index() {
+            // the right range has data -- add to vec, initializing if not there
+            self.rights.get_or_insert_with(Vec::new).push(right_index)
+        }
         self.right_lengths.push(right.width());
         self.overlaps.push(left.overlap_width(right));
     }
@@ -110,6 +117,70 @@ impl<'a, DL, DR> JoinData<'a, DL, DR> {
             right_data: self.right_data,
         }
     }
+}
+
+impl<'a, DL, DR> JoinData<'a, DL, DR>
+where
+    DL: IndexedDataContainer + 'a,
+    DR: IndexedDataContainer + 'a,
+{
+    pub fn apply_into_vec<F, V>(&self, func: F) -> Vec<V>
+    where
+        F: Fn(
+            CombinedJoinData<
+                <DL as IndexedDataContainer>::OwnedItem,
+                <DR as IndexedDataContainer>::OwnedItem,
+            >,
+        ) -> V,
+    {
+        // Cloning `left_data` and `right_data` to ensure they live long enough.
+        // This might not be the most efficient but ensures lifetime correctness.
+
+        self.joins
+            .iter()
+            .map(|join| {
+                let left_data = join.left.and_then(|idx| {
+                    self.left_data
+                        .as_ref()
+                        .and_then(|data| Some(data.get_owned(idx)))
+                });
+
+                let right_data = join.rights.as_ref().and_then(|indices| {
+                    Some(
+                        indices
+                            .iter()
+                            .filter_map(|&idx| {
+                                self.right_data
+                                    .as_ref()
+                                    .and_then(|data| Some(data.get_owned(idx)))
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                });
+
+                // Now `func` is applied to each `CombinedJoinData`
+                func(CombinedJoinData {
+                    left_data,
+                    right_data,
+                })
+            })
+            .collect()
+    }
+}
+
+/// Represents a combined view of a single join operation along with references to
+/// associated left and right data.
+///
+/// This struct is particularly useful for iterating over join results while maintaining
+/// access to the original data elements that were involved in each join. It encapsulates
+/// a reference to the join information (`join`), which details how two data elements are
+/// related (e.g., through overlap or proximity). Additionally, it holds optional references
+/// to the data elements themselves (`left_data` and `right_data`), allowing for easy retrieval
+/// and inspection of the data involved in the join.
+pub struct CombinedJoinData<DL, DR> {
+    // pub join: LeftGroupedJoin,      // The join information
+    pub left_data: Option<DL>,       // The left data element
+    pub right_data: Option<Vec<DR>>, // The right data elements
 }
 
 /// An iterator over the [`LeftGroupedJoin`] types that represent

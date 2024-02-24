@@ -16,7 +16,11 @@ use crate::{
     },
     Position,
 };
+#[cfg(feature = "ndarray")]
+use genomap::GenomeMap;
 use indexmap::IndexMap;
+#[cfg(feature = "ndarray")]
+use ndarray::{s, Array1, Array2};
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use tempfile::{Builder, NamedTempFile};
 
@@ -122,7 +126,7 @@ pub fn temp_bedfile() -> NamedTempFile {
 }
 
 /// Create a random BED3 file based on the hg38 sequence lengths, and write to disk.
-pub fn random_bedfile(length: usize) -> NamedTempFile {
+pub fn random_bed3file(length: usize) -> NamedTempFile {
     let temp_bedfile = temp_bedfile();
     granges_random_bed(
         "tests_data/hg38_seqlens.tsv",
@@ -170,4 +174,45 @@ pub fn granges_test_case_02() -> GRanges<VecRangesIndexed, Vec<f64>> {
         "chr1" => [(30, 50, 1.1)],
         "chr2" => [(100, 200, 3.7), (250, 300, 1.1)]
     }, seqlens: { "chr1" => 50, "chr2" => 300 })
+}
+
+#[cfg(feature = "ndarray")]
+/// Mock numeric `NumericSequences1` data
+pub fn random_array1_sequences(n: usize) -> GenomeMap<Array1<f64>> {
+    let mut seqs = GenomeMap::new();
+    // length of sequence
+    let max_len = 100_000;
+    for seqnum in 1..=n {
+        let chrom = format!("chr{}", seqnum);
+        let array: Array1<f64> = Array1::from_iter(1..=max_len).map(|&x| x as f64);
+        seqs.insert(&chrom, array).unwrap();
+    }
+    seqs
+}
+
+#[cfg(feature = "ndarray")]
+/// Mock numeric `NumericSequences2` data
+pub fn random_array2_sequences(n: usize) -> GenomeMap<Array2<f64>> {
+    let mut seqs = GenomeMap::new();
+    // length of sequence
+    let max_len = 100_000;
+    for seqnum in 1..=n {
+        let chrom = format!("chr{}", seqnum);
+
+        // Create a 2-column Array2<f64> with max_len rows
+        let rows = max_len as usize;
+        let mut array = Array2::<f64>::zeros((rows, 2));
+
+        // Fill the array with values from 0 to 2 * max_len
+        let mut value = 0.0;
+        for row in array.rows_mut() {
+            for elem in row {
+                *elem = value;
+                value += 1.0;
+            }
+        }
+
+        seqs.insert(&chrom, array).unwrap();
+    }
+    seqs
 }

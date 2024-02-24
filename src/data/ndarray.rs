@@ -8,9 +8,15 @@ where
     U: Copy + Default + 'a,
 {
     type Item = U;
+    type OwnedItem = U;
     type Output = Array1<U>;
 
     fn get_value(&'a self, index: usize) -> Self::Item {
+        self[index]
+    }
+
+    fn get_owned(&'a self, index: usize) -> <Self as IndexedDataContainer>::OwnedItem {
+        // already owned
         self[index]
     }
 
@@ -32,10 +38,15 @@ where
     U: Copy + Default + 'a,
 {
     type Item = ArrayView1<'a, U>;
+    type OwnedItem = Array1<U>;
     type Output = Array2<U>;
 
     fn get_value(&'a self, index: usize) -> Self::Item {
         self.row(index)
+    }
+
+    fn get_owned(&'a self, index: usize) -> <Self as IndexedDataContainer>::OwnedItem {
+        self.row(index).to_owned()
     }
 
     fn len(&self) -> usize {

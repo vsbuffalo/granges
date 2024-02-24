@@ -1,6 +1,6 @@
 //! The [`GRanges<R, T>`] and [`GRangesEmpty`] types, and associated functionality.
 //!
-//!
+//!```text
 //!                                  +----------------------+
 //!                                  |     GRanges<R, T>    |
 //!                                  |        object        |
@@ -14,6 +14,7 @@
 //!                               | container |      |  container  |
 //!                               |    (R)    |      |      (T)    |
 //!                               +-----------+      +-------------+
+//!```
 //!
 //! # [`GRanges<R, T>`] Generic Types
 //!
@@ -87,7 +88,7 @@ use crate::{
     ensure_eq,
     io::OutputStream,
     iterators::GRangesIterator,
-    join::{JoinData, LeftGroupedJoin},
+    join::{CombinedJoinData, JoinData, LeftGroupedJoin},
     prelude::GRangesError,
     ranges::{
         coitrees::{COITrees, COITreesEmpty, COITreesIndexed},
@@ -205,13 +206,18 @@ where
             .collect();
         seqlens
     }
+
+    /// Take the data out of this [`GRanges`] object.
+    pub fn take_data(&mut self) -> Result<T, GRangesError> {
+        std::mem::take(&mut self.data).ok_or(GRangesError::NoDataContainer)
+    }
 }
 
 impl<'a, T> GenomicRangesTsvSerialize<'a, VecRangesIndexed> for GRanges<VecRangesIndexed, T>
 where
-    T: IndexedDataContainer<'a>,
+    T: IndexedDataContainer + 'a,
     T: TsvSerialize,
-    <T as IndexedDataContainer<'a>>::Item: TsvSerialize,
+    <T as IndexedDataContainer>::Item<'a>: TsvSerialize,
 {
     /// Write
     fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError> {
@@ -547,9 +553,9 @@ impl<'a, DL, DR> GRanges<VecRangesIndexed, JoinData<'a, DL, DR>> {
 
 impl<'a, T> GRanges<VecRanges<RangeIndexed>, T>
 where
-    T: IndexedDataContainer<'a>,
+    T: IndexedDataContainer + 'a,
     T: TsvSerialize,
-    <T as IndexedDataContainer<'a>>::Item: TsvSerialize,
+    <T as IndexedDataContainer>::Item<'a>: TsvSerialize,
 {
     /// Write this [`GRanges<VecRanges, T>`] object to a TSV file, using the
     /// [`TsvSerialize`] trait methods defiend for the items in `T`.
@@ -606,9 +612,48 @@ where
     }
 }
 
+impl<'a, DL: Clone + 'a, DR: Clone + 'a> GRanges<VecRangesIndexed, JoinData<'a, DL, DR>>
+where
+    DL: IndexedDataContainer,
+    DR: IndexedDataContainer,
+{
+    /// Apply a function over the [`JoinData`] inside this [`GRanges`].
+    ///
+    /// This is a workhorse method that is used to summarize genomic overlaps. The
+    /// user-specified function, `func` is applied to each "join" item in this [`GRanges`]
+    /// object's data container (which is a [`JoinData`] storing the join information).
+    /// This supplied `func` function returns some generic type `V` per join, which could be
+    /// e.g. a median `f64` value, a `String` of all overlap right ranges' values concatenated,
+    /// etc.
+    ///
+    /// See [`CombinedJoinData`] and its convenience methods, which are designed
+    /// to help downstream statistical calculations that could use the number of overlapping
+    /// basepairs, overlapping fraction, etc.
+    pub fn apply_over_join<F, V>(
+        mut self,
+        func: F,
+    ) -> Result<GRanges<VecRangesIndexed, Vec<V>>, GRangesError>
+    where
+        F: Fn(
+            CombinedJoinData<
+                <DL as IndexedDataContainer>::OwnedItem,
+                <DR as IndexedDataContainer>::OwnedItem,
+            >,
+        ) -> V,
+    {
+        let data = self.take_data()?;
+        let transformed_data: Vec<V> = data.apply_into_vec(func);
+        let ranges = self.ranges;
+        Ok(GRanges {
+            ranges,
+            data: Some(transformed_data),
+        })
+    }
+}
+
 impl<'a, C, T> GRanges<C, T>
 where
-    T: IndexedDataContainer<'a>,
+    T: IndexedDataContainer,
 {
     /// Get the data in the data container at specified index.
     ///
@@ -616,7 +661,7 @@ where
     /// This will panic if there if the index is invalid, or the
     /// data container is `None`. Both of these indicate internal
     /// design errors: please file an issue of you encounter a panic.
-    pub fn get_data_value(&'a self, index: usize) -> <T as IndexedDataContainer>::Item {
+    pub fn get_data_value(&self, index: usize) -> <T as IndexedDataContainer>::Item<'_> {
         self.data
             .as_ref()
             .expect("data container was None")
@@ -839,7 +884,7 @@ where
         let mut gr: GRanges<VecRangesIndexed, Vec<U>> = GRanges::new_vec(&self.seqlens());
 
         let right_ref = right.as_granges_ref();
-        let data = std::mem::take(&mut self.data).ok_or(GRangesError::NoDataContainer)?;
+        let data = self.take_data()?;
 
         let mut old_indices = HashSet::new(); // the old indices to *keep*
         let mut new_indices = Vec::new();
