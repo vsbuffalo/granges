@@ -118,21 +118,33 @@ pub mod reporting;
 
 /// The main position type in GRanges.
 ///
-/// This type is currently an unwrapped [`u32`]. To my knowledge,
-/// no chromosome is known to have a length larger than [`u32::MAX`],
-/// which is 4,294,967,295, i.e. 4.29 Gigabases.
+/// This type is currently an unwrapped [`u32`]. This should handle
+/// chromosome lengths for nearly all species. In fact, the only exception
+/// known so far is lungfush (*Neoceratodus forsteri*), which has a chromosomes
+/// that reaches 5.4Gb (https://www.nature.com/articles/s41586-021-03198-8l).
+/// The [`u32::MAX`] is 4,294,967,295, i.e. 4.29 Gigabases, which means [`u32`] is
+/// just barely suitable for even the largest known chromosome. There is a
+/// performance and memory-efficiency tradeoff when using [`u64`] over [`u32`],
+/// so [`u32`] is used by default since it handles nearly all cases.
 ///
-/// # Stability
-/// This type may change either due to (1) wrapping in a newtype,
-/// and/or (2) become a [`u64`] if there is a species with a
-/// single chromosome's length surpassing [`u32::MAX`].
+/// # Feature support for large chromosomes
 ///
-/// [`u32::Max`]: std::u32::MAX
+/// If you are working with data from a species with unusually large chromosomes,
+/// you can compile GRanges using the `--features=big-position` option, which will set
+/// the [`Position`] and [`PositionOffset`] to [`u64`] and [`i64`], respectively.
+///
+/// [`u32::MAX`]: std::u32::MAX
+#[cfg(not(feature = "big-position"))]
 pub type Position = u32;
+#[cfg(feature = "big-position")]
+pub type Position = u64;
 
 /// The main *signed* position type in GRanges, to represent offsets (e.g.
 /// for adjust range coordinates, etc).
+#[cfg(not(feature = "big-position"))]
 pub type PositionOffset = i32;
+#[cfg(feature = "big-position")]
+pub type PositionOffset = i64;
 
 /// The main exports of the GRanges library.
 pub mod prelude {
@@ -148,6 +160,7 @@ pub mod prelude {
         AsGRangesRef, GeneralRangeRecordIterator, GenericRange, GenericRangeOperations,
         GenomicRangeRecordUnwrappable, GenomicRangesTsvSerialize, IndexedDataContainer,
         IntoIterableRangesContainer, IterableRangeContainer, TsvSerialize,
+        LeftOverlaps,
     };
 
     pub use crate::seqlens;

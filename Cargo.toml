@@ -33,6 +33,7 @@ dev-commands = [ ]
 test_bigranges = [] # NOTE: not used yet, for tests on large files
 polars = ["dep:polars"]
 ndarray = ["dep:ndarray", "dep:ndarray-npy"]
+big-position = []
 
 [profile.release]
 opt-level = 3

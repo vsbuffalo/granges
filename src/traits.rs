@@ -26,6 +26,15 @@ pub trait AsGRangesRef<'a, C, T> {
     fn as_granges_ref(&'a self) -> &'a GRanges<C, T>;
 }
 
+/// The [`LeftOverlaps`] trait provides compile time polymorphic behavior
+/// over its associated [`LeftOverlaps::Output`] type and its `Right` 
+/// generic type.
+pub trait LeftOverlaps<'a, Right> {
+    type Output;
+
+    fn left_overlaps(self, right: &'a Right) -> Result<Self::Output, GRangesError>;
+}
+
 /// The [`GenomicRangesTsvSerialize`] trait defines how to convert a [`GRanges<R, T>`]
 /// object, for some mix of generic types, to a TSV file.
 pub trait GenomicRangesTsvSerialize<'a, C: RangeContainer> {

@@ -74,18 +74,19 @@ impl LeftGroupedJoin {
     }
 }
 
-/// [`JoinData`] contains a [`Vec<LeftGroupedJoin>`] of all overlap
-/// joins, as well as references to the left and right data containers.
+/// [`JoinData`] contains a [`Vec<LeftGroupedJoin>`] of all overlap joins,
+/// and owns the left data container from the join. It stores a reference
+/// to the right data container.
 #[derive(Clone, Debug)]
 pub struct JoinData<'a, DL, DR> {
     pub joins: Vec<LeftGroupedJoin>,
-    pub left_data: Option<DL>,
-    pub right_data: Option<&'a DR>,
+    pub left_data: DL,
+    pub right_data: &'a DR,
 }
 
 impl<'a, DL, DR> JoinData<'a, DL, DR> {
     /// Create a new [`JoinData`].
-    pub fn new(left_data: Option<DL>, right_data: Option<&'a DR>) -> Self {
+    pub fn new(left_data: DL, right_data: &'a DR) -> Self {
         let joins = Vec::new();
         JoinData {
             joins,
@@ -109,14 +110,20 @@ impl<'a, DL, DR> JoinData<'a, DL, DR> {
         self.len() == 0
     }
 
-    /// Create an iterator over the joins.
-    pub fn iter(&'a self) -> JoinDataIterator<'a, DL, DR> {
-        JoinDataIterator {
-            inner: self.joins.iter(),
-            left_data: self.left_data.as_ref(),
-            right_data: self.right_data,
-        }
-    }
+    ///// Create an iterator over the joins.
+    //pub fn iter(&'a self) -> JoinDataIterator<'a, DL, DR> {
+    //    JoinDataIterator {
+    //        inner: self.joins.iter(),
+    //        left_data: self.left_data.as_ref(),
+    //        right_data: self.right_data,
+    //    }
+    //}
+}
+
+pub struct CombinedJoinData<DL, DR> {
+    pub join: LeftGroupedJoin, // Information on the join
+    pub left_data: DL,         // The left data element
+    pub right_data: Vec<DR>,   // The right data elements
 }
 
 impl<'a, DL, DR> JoinData<'a, DL, DR>
@@ -124,7 +131,9 @@ where
     DL: IndexedDataContainer + 'a,
     DR: IndexedDataContainer + 'a,
 {
-    pub fn apply_into_vec<F, V>(&self, func: F) -> Vec<V>
+    /// Apply `func` to each element, putting the results into the returned
+    /// `Vec<U>`.
+    pub fn apply<F, V>(&self, func: F) -> Vec<V>
     where
         F: Fn(
             CombinedJoinData<
@@ -139,27 +148,16 @@ where
         self.joins
             .iter()
             .map(|join| {
-                let left_data = join.left.and_then(|idx| {
-                    self.left_data
-                        .as_ref()
-                        .and_then(|data| Some(data.get_owned(idx)))
-                });
-
-                let right_data = join.rights.as_ref().and_then(|indices| {
-                    Some(
-                        indices
-                            .iter()
-                            .filter_map(|&idx| {
-                                self.right_data
-                                    .as_ref()
-                                    .and_then(|data| Some(data.get_owned(idx)))
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                });
-
+                let left_data = self.left_data.get_owned(join.left.unwrap());
+                let right_data = join
+                    .rights.as_ref()
+                    .unwrap()
+                    .iter()
+                    .map(|idx| self.right_data.get_owned(*idx))
+                    .collect();
                 // Now `func` is applied to each `CombinedJoinData`
                 func(CombinedJoinData {
+                    join: join.clone(),
                     left_data,
                     right_data,
                 })
@@ -168,39 +166,206 @@ where
     }
 }
 
-/// Represents a combined view of a single join operation along with references to
-/// associated left and right data.
-///
-/// This struct is particularly useful for iterating over join results while maintaining
-/// access to the original data elements that were involved in each join. It encapsulates
-/// a reference to the join information (`join`), which details how two data elements are
-/// related (e.g., through overlap or proximity). Additionally, it holds optional references
-/// to the data elements themselves (`left_data` and `right_data`), allowing for easy retrieval
-/// and inspection of the data involved in the join.
-pub struct CombinedJoinData<DL, DR> {
-    // pub join: LeftGroupedJoin,      // The join information
-    pub left_data: Option<DL>,       // The left data element
-    pub right_data: Option<Vec<DR>>, // The right data elements
+/// [`JoinDataLeftEmpty`] contains a [`Vec<LeftGroupedJoin>`] of all overlap joins,
+/// and stores a reference to the right data container.
+#[derive(Clone, Debug)]
+pub struct JoinDataLeftEmpty<'a, DR> {
+    pub joins: Vec<LeftGroupedJoin>,
+    pub right_data: &'a DR,
 }
 
-/// An iterator over the [`LeftGroupedJoin`] types that represent
-/// information about overlaps right ranges have with a particular left range.
-///
-/// This also contains references to the left and right data containers, for
-/// better ergonomics in downstream data processing.
-pub struct JoinDataIterator<'a, DL, DR> {
-    inner: std::slice::Iter<'a, LeftGroupedJoin>,
-    pub left_data: Option<&'a DL>,
-    pub right_data: Option<&'a DR>,
-}
+impl<'a, DR> JoinDataLeftEmpty<'a, DR> {
+    /// Create a new [`JoinData`].
+    pub fn new(right_data: &'a DR) -> Self {
+        let joins = Vec::new();
+        JoinDataLeftEmpty { joins, right_data }
+    }
 
-impl<'a, DL, DR> Iterator for JoinDataIterator<'a, DL, DR> {
-    type Item = &'a LeftGroupedJoin;
+    /// Push the [`LeftGroupedJoin`] to joins.
+    pub fn push(&mut self, join: LeftGroupedJoin) {
+        self.joins.push(join)
+    }
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next()
+    /// Get the total number of joins.
+    pub fn len(&self) -> usize {
+        self.joins.len()
+    }
+
+    /// Return whether the [`JoinData`] object is empty (contains no ranges).
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
+
+pub struct CombinedJoinDataLeftEmpty<DR> {
+    pub join: LeftGroupedJoin, // Information on the join
+    pub right_data: Vec<DR>,   // The right data element
+}
+
+impl<'a, DR> JoinDataLeftEmpty<'a, DR>
+where
+    DR: IndexedDataContainer + 'a,
+{
+    /// Apply `func` to each element, putting the results into the returned
+    /// `Vec<U>`.
+    pub fn apply<F, V>(&self, func: F) -> Vec<V>
+    where
+        F: Fn(CombinedJoinDataLeftEmpty<<DR as IndexedDataContainer>::OwnedItem>) -> V,
+    {
+        // Cloning `left_data` and `right_data` to ensure they live long enough.
+        // This might not be the most efficient but ensures lifetime correctness.
+
+        self.joins
+            .iter()
+            .map(|join| {
+                let right_data = join
+                    .rights.as_ref()
+                    .unwrap()
+                    .iter()
+                    .map(|idx| self.right_data.get_owned(*idx))
+                    .collect();
+                // Now `func` is applied to each `CombinedJoinDataLeftEmpty`
+                func(CombinedJoinDataLeftEmpty {
+                    join: join.clone(),
+                    right_data,
+                })
+            })
+            .collect()
+    }
+}
+
+/// [`JoinDataRightEmpty`] contains a [`Vec<LeftGroupedJoin>`] of all overlap joins,
+/// and owns the left data.
+#[derive(Clone, Debug)]
+pub struct JoinDataRightEmpty<DR> {
+    pub joins: Vec<LeftGroupedJoin>,
+    pub left_data: DR,
+}
+
+impl<'a, DL> JoinDataRightEmpty<DL> {
+    /// Create a new [`JoinData`].
+    pub fn new(left_data: DL) -> Self {
+        let joins = Vec::new();
+        JoinDataRightEmpty { joins, left_data }
+    }
+
+    /// Push the [`LeftGroupedJoin`] to joins.
+    pub fn push(&mut self, join: LeftGroupedJoin) {
+        self.joins.push(join)
+    }
+
+    /// Get the total number of joins.
+    pub fn len(&self) -> usize {
+        self.joins.len()
+    }
+
+    /// Return whether the [`JoinData`] object is empty (contains no ranges).
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+pub struct CombinedJoinDataRightEmpty<DL> {
+    pub join: LeftGroupedJoin, // Information on the join
+    pub left_data: DL,         // The right data element
+}
+
+impl<'a, DL> JoinDataRightEmpty<DL>
+where
+    DL: IndexedDataContainer,
+{
+    /// Apply `func` to each element, putting the results into the returned
+    /// `Vec<U>`.
+    pub fn apply<F, V>(&self, func: F) -> Vec<V>
+    where
+        F: Fn(CombinedJoinDataRightEmpty<<DL as IndexedDataContainer>::OwnedItem>) -> V,
+    {
+        // Cloning `left_data` and `right_data` to ensure they live long enough.
+        // This might not be the most efficient but ensures lifetime correctness.
+
+        self.joins
+            .iter()
+            .map(|join| {
+                let left_data = self.left_data.get_owned(join.left.unwrap());
+                // Now `func` is applied to each `CombinedJoinDataRightEmpty`
+                func(CombinedJoinDataRightEmpty {
+                    join: join.clone(),
+                    left_data,
+                })
+            })
+            .collect()
+    }
+}
+
+/// [`JoinDataBothEmpty`] contains a [`Vec<LeftGroupedJoin>`] of all overlap joins
+/// without any owned or references to data containers.
+#[derive(Clone, Debug)]
+pub struct JoinDataBothEmpty {
+    pub joins: Vec<LeftGroupedJoin>,
+}
+
+impl JoinDataBothEmpty {
+    /// Create a new [`JoinData`].
+    pub fn new() -> Self {
+        let joins = Vec::new();
+        JoinDataBothEmpty { joins }
+    }
+
+    /// Push the [`LeftGroupedJoin`] to joins.
+    pub fn push(&mut self, join: LeftGroupedJoin) {
+        self.joins.push(join)
+    }
+
+    /// Get the total number of joins.
+    pub fn len(&self) -> usize {
+        self.joins.len()
+    }
+
+    /// Return whether the [`JoinData`] object is empty (contains no ranges).
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+pub struct CombinedJoinDataBothEmpty {
+    pub join: LeftGroupedJoin,
+}
+
+impl JoinDataBothEmpty {
+    /// Apply `func` to each element, putting the results into the returned
+    /// `Vec<U>`.
+    pub fn apply<F, V>(&self, func: F) -> Vec<V>
+    where
+        F: Fn(CombinedJoinDataBothEmpty) -> V,
+    {
+        // Cloning `left_data` and `right_data` to ensure they live long enough.
+        // This might not be the most efficient but ensures lifetime correctness.
+
+        self.joins
+            .iter()
+            .map(|join| func(CombinedJoinDataBothEmpty { join: join.clone() }))
+            .collect()
+    }
+}
+
+///// An iterator over the [`LeftGroupedJoin`] types that represent
+///// information about overlaps right ranges have with a particular left range.
+/////
+///// This also contains references to the left and right data containers, for
+///// better ergonomics in downstream data processing.
+//pub struct JoinDataIterator<'a, DL, DR> {
+//    inner: std::slice::Iter<'a, LeftGroupedJoin>,
+//    pub left_data: Option<&'a DL>,
+//    pub right_data: Option<&'a DR>,
+//}
+//
+//impl<'a, DL, DR> Iterator for JoinDataIterator<'a, DL, DR> {
+//    type Item = &'a LeftGroupedJoin;
+//
+//    fn next(&mut self) -> Option<Self::Item> {
+//        self.inner.next()
+//    }
+//}
 
 #[cfg(test)]
 mod tests {
@@ -212,7 +377,7 @@ mod tests {
     fn test_join_data_new() {
         let left_data = vec![1, 2];
         let right_data = vec![4, 8];
-        let mut jd = JoinData::new(Some(&left_data), Some(&right_data));
+        let mut jd = JoinData::new(left_data, &right_data);
         assert_eq!(jd.len(), 0);
 
         let left = RangeIndexed::new(0, 10, 1);
@@ -221,29 +386,5 @@ mod tests {
         join.add_right(&left, &right);
         jd.push(join);
         assert_eq!(jd.len(), 1);
-    }
-
-    #[test]
-    fn test_join_iter() {
-        let left_data = vec![1, 2];
-        let right_data = vec![4, 8];
-
-        let mut jd = JoinData::new(Some(&left_data), Some(&right_data));
-
-        let left = RangeIndexed::new(0, 10, 1);
-        let mut join = LeftGroupedJoin::new(&left);
-        let right = RangeIndexed::new(8, 10, 1);
-        join.add_right(&left, &right);
-        jd.push(join);
-
-        let right = RangeIndexed::new(9, 11, 1);
-        let mut join = LeftGroupedJoin::new(&left);
-        join.add_right(&left, &right);
-        jd.push(join);
-
-        let mut iter = jd.iter();
-        assert_eq!(iter.next().unwrap().num_overlaps(), 1);
-        assert_eq!(iter.next().unwrap().num_overlaps(), 1);
-        assert_eq!(iter.next(), None);
     }
 }
