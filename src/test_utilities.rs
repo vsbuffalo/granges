@@ -138,6 +138,22 @@ pub fn random_bed3file(length: usize) -> NamedTempFile {
     temp_bedfile
 }
 
+/// Create a random BED5 file based on the hg38 sequence lengths, and write to disk.
+///
+/// The feature names are random lowercase characters, and the scores are
+/// random floats.
+pub fn random_bed5file(length: usize) -> NamedTempFile {
+    let temp_bedfile = temp_bedfile();
+    granges_random_bed(
+        "tests_data/hg38_seqlens.tsv",
+        length,
+        Some(temp_bedfile.path()),
+        true,
+    )
+    .expect("could not generate random BED file");
+    temp_bedfile
+}
+
 /// Range test case #1
 ///
 /// Ranges:

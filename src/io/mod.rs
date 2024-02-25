@@ -6,5 +6,7 @@ pub mod tsv;
 
 pub use file::{InputStream, OutputStream};
 pub use parsers::{
-    Bed3Iterator, BedlikeIterator, GenomicRangesFile, GenomicRangesParser, TsvRecordIterator,
+    Bed3Iterator, Bed5Iterator, BedlikeIterator, GenomicRangesFile, GenomicRangesParser,
+    TsvRecordIterator,
 };
+pub use tsv::BED_TSV;

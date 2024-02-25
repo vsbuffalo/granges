@@ -18,6 +18,68 @@
 //! analagous runtime dynamic data structures that would allow the library to be wrapped and used
 //! by other languages.
 //!
+//! ## Example
+//!
+//! The best introduction to the GRanges library is an example illustrating
+//! how a common genomic data processing task can be expressed in few lines
+//! of (relatively simple) code. Below is an annotated implementation of
+//! `granges map`, which provides the same functionality of `bedtools map`:
+//! arbitrary operations (e.g. mean, median, max, etc) are applied to the numeric
+//! scores of all right ranges that overlap a each left range:
+//!
+//! ```
+//! use granges::prelude::*;
+//!
+//! // Data for example:
+//! let genome = seqlens!("chr1" => 100, "chr2" => 100);
+//! let left_path = "tests_data/bedtools/map_a.txt";
+//! let right_path = "tests_data/bedtools/map_b.txt";
+//!
+//! // Read in the "genome file" of chromosomes and their lengths.
+//! let seqnames: Vec<String> = genome.keys().cloned().collect();
+//!
+//! // Create parsing iterators to the left and right BED files.
+//! let left_iter = Bed3Iterator::new(left_path)
+//!                   .expect("error inferring filetype");
+//! let right_iter = Bed5Iterator::new(right_path)
+//!                   .expect("error inferring filetype");
+//!
+//! // Filter out any ranges from chromosomes not in our genome file.
+//! let left_gr = GRangesEmpty::from_iter(left_iter.retain_seqnames(&seqnames), &genome)
+//!                  .expect("error parsing file");
+//! let right_gr = GRanges::from_iter(right_iter.retain_seqnames(&seqnames), &genome)
+//!                  .expect("error parsing file");
+//!
+//!
+//! // Create the "right" GRanges object, convert the ranges to an
+//! // interval trees, and tidy it by selecting out a f64 score.
+//! let right_gr = {
+//!     right_gr
+//!         // Convert to interval trees.
+//!         .into_coitrees().expect("error computing interval trees")
+//!         // Extract out just the score from the additional BED5 columns.
+//!         .map_data(|bed5_cols| {
+//!             bed5_cols.score
+//!         }).expect("error selecting score")
+//! };
+//!
+//! // Find the overlaps by doing a *left grouped join*.
+//! let left_join_gr = left_gr.left_overlaps(&right_gr)
+//!                        .expect("error in computing overlaps");
+//!
+//! // Process all the overlaps.
+//! let result_gr = left_join_gr.map_over_joins(|join_data| {
+//!     // Get the "right data" -- the BED5 scores.
+//!     let overlap_scores = join_data.right_data;
+//!     let score_sum: f64 = overlap_scores.iter().sum();
+//!     score_sum / (overlap_scores.len() as f64)
+//! }).expect("error computing mean score");
+//!
+//! // Write to a TSV file, using the BED TSV format standards
+//! // for missing values, etc.
+//! let path = Some("map_results.bed.gz");
+//! result_gr.to_tsv(path, &BED_TSV).expect("error writing output");
+//! ```
 //!
 //! ## Design Overview
 //!
@@ -151,10 +213,13 @@ pub mod prelude {
     pub use crate::error::GRangesError;
     pub use crate::granges::{GRanges, GRangesEmpty};
     pub use crate::io::file::read_seqlens;
+    pub use crate::io::tsv::BED_TSV;
     pub use crate::io::{
-        Bed3Iterator, BedlikeIterator, GenomicRangesFile, GenomicRangesParser, TsvRecordIterator,
+        Bed3Iterator, Bed5Iterator, BedlikeIterator, GenomicRangesFile, GenomicRangesParser,
+        TsvRecordIterator,
     };
 
+    pub use crate::data::DatumType;
     pub use crate::ranges::vec::{VecRangesEmpty, VecRangesIndexed};
     pub use crate::traits::{
         AsGRangesRef, GeneralRangeRecordIterator, GenericRange, GenericRangeOperations,

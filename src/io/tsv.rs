@@ -56,6 +56,66 @@ impl TsvSerialize for &Vec<DatumType> {
     }
 }
 
+impl TsvSerialize for &f64 {
+    #![allow(unused_variables)]
+    fn to_tsv(&self, config: &TsvConfig) -> String {
+        // TODO precision from config
+        format!("{}", self).to_string()
+    }
+}
+
+impl TsvSerialize for f64 {
+    #![allow(unused_variables)]
+    fn to_tsv(&self, config: &TsvConfig) -> String {
+        // TODO precision from config
+        format!("{}", self).to_string()
+    }
+}
+
+impl TsvSerialize for &f32 {
+    #![allow(unused_variables)]
+    fn to_tsv(&self, config: &TsvConfig) -> String {
+        // TODO precision from config
+        format!("{}", self).to_string()
+    }
+}
+
+impl TsvSerialize for f32 {
+    #![allow(unused_variables)]
+    fn to_tsv(&self, config: &TsvConfig) -> String {
+        // TODO precision from config
+        format!("{}", self).to_string()
+    }
+}
+
+impl TsvSerialize for &i64 {
+    #![allow(unused_variables)]
+    fn to_tsv(&self, config: &TsvConfig) -> String {
+        format!("{}", self).to_string()
+    }
+}
+
+impl TsvSerialize for i64 {
+    #![allow(unused_variables)]
+    fn to_tsv(&self, config: &TsvConfig) -> String {
+        format!("{}", self).to_string()
+    }
+}
+
+impl TsvSerialize for &i32 {
+    #![allow(unused_variables)]
+    fn to_tsv(&self, config: &TsvConfig) -> String {
+        format!("{}", self).to_string()
+    }
+}
+
+impl TsvSerialize for i32 {
+    #![allow(unused_variables)]
+    fn to_tsv(&self, config: &TsvConfig) -> String {
+        format!("{}", self).to_string()
+    }
+}
+
 impl TsvSerialize for DatumType {
     fn to_tsv(&self, config: &TsvConfig) -> String {
         match self {

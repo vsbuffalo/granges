@@ -224,7 +224,13 @@ where
     T: TsvSerialize,
     <T as IndexedDataContainer>::Item<'a>: TsvSerialize,
 {
-    /// Write
+    /// Write this [`GRanges`] object to a TSV file to `output`, using the [`TsvConfig`]
+    /// specified with `config`.
+    ///
+    /// # Arguments
+    /// * `output`: either `None` (for standard out) or file path. If the filepath
+    ///             ends in `.gz`, the output will be gzip-compressed.
+    /// * `config`: a [`TsvConfig`], which contains the TSV output settings.
     fn to_tsv(
         &'a self,
         output: Option<impl Into<PathBuf>>,
@@ -247,7 +253,14 @@ where
 }
 
 impl<'a, R: IterableRangeContainer> GenomicRangesTsvSerialize<'a, R> for GRangesEmpty<R> {
-    /// Output a BED3 file for for this data-less [`GRanges<R, ()>`].
+    /// Write this [`GRangesEmpty`] object to a TSV file to `output`, using the [`TsvConfig`]
+    /// specified with `config`. Since this [`GRangesEmpty`] contains no data, the output
+    /// will be a BED3 file.
+    ///
+    /// # Arguments
+    /// * `output`: either `None` (for standard out) or file path. If the filepath
+    ///             ends in `.gz`, the output will be gzip-compressed.
+    /// * `config`: a [`TsvConfig`], which contains the TSV output settings.
     fn to_tsv(
         &'a self,
         output: Option<impl Into<PathBuf>>,
@@ -654,7 +667,7 @@ where
 }
 
 /// [`GRanges::left_overlaps()`] for the left with data, right empty case.
-impl<'a, DL: 'a> LeftOverlaps<'a, GRangesEmpty<COITreesEmpty>> for GRanges<VecRangesEmpty, DL>
+impl<'a, DL: 'a> LeftOverlaps<'a, GRangesEmpty<COITreesEmpty>> for GRanges<VecRangesIndexed, DL>
 where
     DL: IndexedDataContainer + 'a,
 {
@@ -706,9 +719,8 @@ where
 }
 
 /// [`GRanges::left_overlaps()`] for the left empty, right with data case.
-impl<'a, C, DR: 'a> LeftOverlaps<'a, GRanges<COITreesIndexed, DR>> for GRangesEmpty<C>
+impl<'a, DR: 'a> LeftOverlaps<'a, GRanges<COITreesIndexed, DR>> for GRangesEmpty<VecRangesEmpty>
 where
-    C: IterableRangeContainer,
     DR: IndexedDataContainer + 'a,
 {
     type Output = GRanges<VecRanges<RangeIndexed>, JoinDataLeftEmpty<'a, DR>>;
@@ -759,7 +771,10 @@ where
 }
 
 /// [`GRanges::left_overlaps()`] for the left empty, right empty case.
-impl<'a> LeftOverlaps<'a, GRangesEmpty<COITreesEmpty>> for GRangesEmpty<COITreesEmpty> {
+impl<'a, C> LeftOverlaps<'a, GRangesEmpty<COITreesEmpty>> for GRangesEmpty<C>
+where
+    C: IterableRangeContainer,
+{
     type Output = GRanges<VecRanges<RangeIndexed>, JoinDataBothEmpty>;
 
     /// Conduct a left overlap join, consuming self and returning a new
@@ -1446,7 +1461,25 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_over_joins() {
+    fn test_left_with_data_right_empty() {
+        let sl = seqlens!("chr1" => 50);
+        let mut left_gr: GRanges<VecRangesIndexed, Vec<f64>> = GRanges::new_vec(&sl);
+        left_gr.push_range("chr1", 1, 2, 1.1).unwrap();
+        left_gr.push_range("chr1", 5, 7, 2.8).unwrap();
+
+        let windows = GRangesEmpty::from_windows(&sl, 10, None, true)
+            .unwrap()
+            .into_coitrees()
+            .unwrap();
+
+        let joined_results = left_gr.left_overlaps(&windows).unwrap();
+
+        // check the joined results
+        assert_eq!(joined_results.len(), 2)
+    }
+
+    #[test]
+    fn test_map_over_joins() {
         let sl = seqlens!("chr1" => 50);
         let windows: GRangesEmpty<VecRangesEmpty> =
             GRangesEmpty::from_windows(&sl, 10, None, true).unwrap();
@@ -1460,8 +1493,24 @@ mod tests {
         let right_gr = right_gr.into_coitrees().unwrap();
 
         // TODO
-        let joined_results = windows.left_overlaps(&right_gr).unwrap();
-        // joined_results.apply_over_joins();
+        let joined_results = windows
+            .left_overlaps(&right_gr)
+            .unwrap()
+            .map_over_joins(|join_data| {
+                let overlap_scores = join_data.right_data;
+                overlap_scores.iter().sum::<f64>()
+            })
+            .unwrap();
+
+        let mut iter = joined_results.iter_ranges();
+        let first_range = iter.next().unwrap();
+        assert_eq!(first_range.start, 0);
+        assert_eq!(first_range.end, 10);
+
+        let mut data_iter = joined_results.data.as_ref().unwrap().iter();
+        assert_eq!(*data_iter.next().unwrap(), 5.0);
+        assert_eq!(*data_iter.next().unwrap(), 0.0);
+        assert_eq!(*data_iter.next().unwrap(), 4.1);
     }
 
     #[test]
