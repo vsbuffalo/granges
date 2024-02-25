@@ -417,19 +417,28 @@ impl TsvSerialize for Option<Strand> {
 /// The additional two BED5 columns.
 #[derive(Clone, Debug)]
 pub struct Bed5Addition {
-    name: String,
-    strand: Option<Strand>,
+    pub name: String,
+    pub score: f64,
+}
+
+/// The additional three BED6 columns.
+// TODO: not connectted yet
+#[derive(Clone, Debug)]
+pub struct Bed6Addition {
+    pub name: String,
+    pub score: f64,
+    pub strand: Option<Strand>,
 }
 
 impl TsvSerialize for &Bed5Addition {
     fn to_tsv(&self) -> String {
-        format!("{}\t{}", self.name, self.strand.to_tsv())
+        format!("{}\t{}", self.name, self.score)
     }
 }
 
 impl TsvSerialize for Bed5Addition {
     fn to_tsv(&self) -> String {
-        format!("{}\t{}", self.name, self.strand.to_tsv())
+        format!("{}\t{}", self.name, self.score)
     }
 }
 
@@ -891,9 +900,9 @@ pub fn parse_bed5(line: &str) -> Result<GenomicRangeRecord<Bed5Addition>, GRange
     let end: Position = parse_column(columns[2], line)?;
 
     let name = parse_column(columns[3], line)?;
-    let strand: Option<Strand> = parse_strand(parse_column(columns[3], line)?)?;
+    let score: f64 = parse_column(columns[3], line)?;
 
-    let data = Bed5Addition { name, strand };
+    let data = Bed5Addition { name, score };
 
     Ok(GenomicRangeRecord {
         seqname,
@@ -902,6 +911,33 @@ pub fn parse_bed5(line: &str) -> Result<GenomicRangeRecord<Bed5Addition>, GRange
         data,
     })
 }
+
+// TODO
+///// Parses a BED6 format line into the three columns defining the range, and additional
+///// columns
+/////
+//pub fn parse_bed6(line: &str) -> Result<GenomicRangeRecord<Bed5Addition>, GRangesError> {
+//    let columns: Vec<&str> = line.splitn(4, '\t').collect();
+//    if columns.len() < 3 {
+//        return Err(GRangesError::BedlikeTooFewColumns(line.to_string()));
+//    }
+//
+//    let seqname = parse_column(columns[0], line)?;
+//    let start: Position = parse_column(columns[1], line)?;
+//    let end: Position = parse_column(columns[2], line)?;
+//
+//    let name = parse_column(columns[3], line)?;
+//    // let strand: Option<Strand> = parse_strand(parse_column(columns[3], line)?)?;
+//
+//    let data = Bed5Addition { name, score };
+//
+//    Ok(GenomicRangeRecord {
+//        seqname,
+//        start,
+//        end,
+//        data,
+//    })
+//}
 
 #[cfg(test)]
 mod tests {

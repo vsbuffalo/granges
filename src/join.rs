@@ -3,7 +3,7 @@
 #![allow(clippy::all)]
 
 use crate::{
-    traits::{GenericRange, IndexedDataContainer},
+    traits::{GenericRange, IndexedDataContainer, JoinDataOperations},
     Position,
 };
 
@@ -121,9 +121,23 @@ impl<'a, DL, DR> JoinData<'a, DL, DR> {
 }
 
 pub struct CombinedJoinData<DL, DR> {
-    pub join: LeftGroupedJoin, // Information on the join
-    pub left_data: DL,         // The left data element
-    pub right_data: Vec<DR>,   // The right data elements
+    pub join: LeftGroupedJoin,   // Information on the join
+    pub left_data: DL,           // The left data element
+    pub right_data: Vec<DR>,     // The right data elements
+}
+
+impl<DL, DR> JoinDataOperations<DL, DR> for CombinedJoinData<DL, DR> {
+    type LeftDataElementType = DL;
+    type RightDataElementType = DR;
+    fn join(&self) -> LeftGroupedJoin {
+        self.join
+    }
+    fn left_data(&self) -> Option<Self::LeftDataElementType> {
+        Some(self.left_data)
+    }
+    fn right_data(&self) -> Option<Vec<Self::RightDataElementType>> {
+        Some(self.right_data)
+    }
 }
 
 impl<'a, DL, DR> JoinData<'a, DL, DR>
@@ -133,7 +147,7 @@ where
 {
     /// Apply `func` to each element, putting the results into the returned
     /// `Vec<U>`.
-    pub fn apply<F, V>(&self, func: F) -> Vec<V>
+    pub fn map<F, V>(&self, func: F) -> Vec<V>
     where
         F: Fn(
             CombinedJoinData<
@@ -202,13 +216,28 @@ pub struct CombinedJoinDataLeftEmpty<DR> {
     pub right_data: Vec<DR>,   // The right data element
 }
 
+impl<DR> JoinDataOperations<(), DR> for CombinedJoinDataLeftEmpty<DR> {
+    type LeftDataElementType = ();
+    type RightDataElementType = DR;
+    fn join(&self) -> LeftGroupedJoin {
+        self.join
+    }
+    fn left_data(&self) -> Option<Self::LeftDataElementType> {
+        None
+    }
+    fn right_data(&self) -> Option<Vec<Self::RightDataElementType>> {
+        Some(self.right_data)
+    }
+}
+
+
 impl<'a, DR> JoinDataLeftEmpty<'a, DR>
 where
     DR: IndexedDataContainer + 'a,
 {
     /// Apply `func` to each element, putting the results into the returned
     /// `Vec<U>`.
-    pub fn apply<F, V>(&self, func: F) -> Vec<V>
+    pub fn map<F, V>(&self, func: F) -> Vec<V>
     where
         F: Fn(CombinedJoinDataLeftEmpty<<DR as IndexedDataContainer>::OwnedItem>) -> V,
     {
@@ -270,13 +299,30 @@ pub struct CombinedJoinDataRightEmpty<DL> {
     pub left_data: DL,         // The right data element
 }
 
+
+impl<DL> JoinDataOperations<DL, ()> for CombinedJoinDataRightEmpty<DL> {
+    type LeftDataElementType = DL;
+    type RightDataElementType = ();
+    fn join(&self) -> LeftGroupedJoin {
+        self.join
+    }
+    fn left_data(&self) -> Option<Self::LeftDataElementType> {
+        Some(self.left_data)
+    }
+    fn right_data(&self) -> Option<Vec<Self::RightDataElementType>> {
+        None
+    }
+}
+
+
+
 impl<'a, DL> JoinDataRightEmpty<DL>
 where
     DL: IndexedDataContainer,
 {
     /// Apply `func` to each element, putting the results into the returned
     /// `Vec<U>`.
-    pub fn apply<F, V>(&self, func: F) -> Vec<V>
+    pub fn map<F, V>(&self, func: F) -> Vec<V>
     where
         F: Fn(CombinedJoinDataRightEmpty<<DL as IndexedDataContainer>::OwnedItem>) -> V,
     {
@@ -331,10 +377,26 @@ pub struct CombinedJoinDataBothEmpty {
     pub join: LeftGroupedJoin,
 }
 
+
+impl JoinDataOperations<(), ()> for CombinedJoinDataBothEmpty {
+    type LeftDataElementType = ();
+    type RightDataElementType = ();
+    fn join(&self) -> LeftGroupedJoin {
+        self.join
+    }
+    fn left_data(&self) -> Option<Self::LeftDataElementType> {
+        None
+    }
+    fn right_data(&self) -> Option<Vec<Self::RightDataElementType>> {
+        None
+    }
+}
+
+
 impl JoinDataBothEmpty {
     /// Apply `func` to each element, putting the results into the returned
     /// `Vec<U>`.
-    pub fn apply<F, V>(&self, func: F) -> Vec<V>
+    pub fn map<F, V>(&self, func: F) -> Vec<V>
     where
         F: Fn(CombinedJoinDataBothEmpty) -> V,
     {

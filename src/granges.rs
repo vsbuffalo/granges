@@ -211,6 +211,8 @@ where
     }
 
     /// Take the data out of this [`GRanges`] object.
+    // NODE/TODO?: this is used a lot -- using .expect()
+    // reduce Results a lot.
     pub fn take_data(&mut self) -> Result<T, GRangesError> {
         std::mem::take(&mut self.data).ok_or(GRangesError::NoDataContainer)
     }
@@ -515,6 +517,23 @@ impl<U> GRanges<VecRangesIndexed, Vec<U>> {
     }
 }
 
+
+impl<C, U> GRanges<C, Vec<U>> 
+where C: RangeContainer {
+    /// Consume this [`GRanges<C, Vec<U>>`] object, applying `func` to all elements 
+    /// in [`Vec<U>`], to return a new [`GRanges<C, Vec<V>>`].
+    ///
+    pub fn map_data<F, V>(mut self, func: F) -> Result<GRanges<C, Vec<V>>, GRangesError> 
+    where F: Fn(U) -> V {
+        let left_data = self.take_data()?;
+        let transformed_data = left_data.into_iter().map(func).collect();
+        Ok(GRanges { 
+            ranges: self.ranges,
+            data: Some(transformed_data),
+        })
+    }
+}
+
 impl<'a, DL, DR> GRanges<VecRangesIndexed, JoinData<'a, DL, DR>> {
     /// Push a genomic range with its data to the range and data containers in a [`GRanges] object.
     ///
@@ -590,10 +609,10 @@ where
     /// Conduct a left overlap join, consuming self and returning a new
     /// [`GRanges<VecRangesIndexed, JoinData>`].
     ///
-    /// The [`JoinData`] container contains references to both left and right
-    /// data containers and a [`Vec<LeftGroupedJoin>`]. Each [`LeftGroupedJoin`] represents
-    /// a summary of an overlap, which downstream operations use to calculate
-    /// statistics using the information about overlaps.
+    /// The [`JoinData`] container contains the owned left data container and has 
+    /// a reference to the right data container, as as well as a [`Vec<LeftGroupedJoin`]
+    /// that contains information about each overlap between a left and zero or more right
+    /// ranges.
     fn left_overlaps(
         mut self,
         right: &'a GRanges<COITreesIndexed, DR>,
@@ -630,12 +649,12 @@ where
     type Output = GRanges<VecRanges<RangeIndexed>, JoinDataRightEmpty<DL>>;
 
     /// Conduct a left overlap join, consuming self and returning a new
-    /// [`GRanges<VecRangesIndexed, JoinData>`].
+    /// [`GRanges<VecRangesIndexed, JoinDataRightEmpty>`].
     ///
-    /// The [`JoinData`] container contains references to both left and right
-    /// data containers and a [`Vec<LeftGroupedJoin>`]. Each [`LeftGroupedJoin`] represents
-    /// a summary of an overlap, which downstream operations use to calculate
-    /// statistics using the information about overlaps.
+    /// The [`JoinData`] container contains the left data container and has 
+    /// a reference to the right data container, as as well as a [`Vec<LeftGroupedJoin`]
+    /// that contains information about each overlap between a left and zero or more right
+    /// ranges.
     fn left_overlaps(
         mut self,
         right: &'a GRangesEmpty<COITreesEmpty>,
@@ -681,6 +700,13 @@ where
 {
     type Output = GRanges<VecRanges<RangeIndexed>, JoinDataLeftEmpty<'a, DR>>;
 
+    /// Conduct a left overlap join, consuming self and returning a new
+    /// [`GRanges<VecRangesIndexed, JoinDataLeftEmpty>`].
+    ///
+    /// The [`JoinDataLeftEmpty`] contains no left data, and a reference to the 
+    /// right data container, as as well as a [`Vec<LeftGroupedJoin`]
+    /// that contains information about each overlap between a left and zero or more right
+    /// ranges.
     fn left_overlaps(
         self,
         right: &'a GRanges<COITreesIndexed, DR>,
@@ -709,6 +735,14 @@ where
 impl<'a> LeftOverlaps<'a, GRangesEmpty<COITreesEmpty>> for GRangesEmpty<COITreesEmpty> {
     type Output = GRanges<VecRanges<RangeIndexed>, JoinDataBothEmpty>;
 
+    /// Conduct a left overlap join, consuming self and returning a new
+    /// [`GRanges<VecRangesIndexed, JoinDataBothEmpty>`].
+    ///
+    /// The [`JoinDataBothEmpty`] contains no data, since neither left of right
+    /// [`GRanges`] objects had data. However, it does contain a [`Vec<LeftGroupedJoin`],
+    /// and each [`LeftGroupedJoin`] contains information about the number of overlapping
+    /// ranges and their lengths. This can be used to summarize, e.g. the number
+    /// of overlapping basepairs, the overlap fraction, etc.
     fn left_overlaps(
         self,
         _right: &'a GRangesEmpty<COITreesEmpty>,
@@ -734,17 +768,22 @@ where
 {
     /// Apply a function over the [`JoinData`] inside this [`GRanges`].
     ///
-    /// This is a workhorse method that is used to summarize genomic overlaps. The
+    /// This is a powerful method that is used to summarize genomic overlaps. The
     /// user-specified function, `func` is applied to each "join" item in this [`GRanges`]
     /// object's data container (which is a [`JoinData`] storing the join information).
     /// This supplied `func` function returns some generic type `V` per join, which could be
     /// e.g. a median `f64` value, a `String` of all overlap right ranges' values concatenated,
     /// etc.
     ///
+    /// # Arugments 
+    /// * `func`: a function that takes a [`CombinedJoinData`] (which contains
+    ///           the associated data for the left range and overlapping right ranges)
+    ///           and summarizes it into a new type `V`.
+    ///
     /// See [`CombinedJoinData`] and its convenience methods, which are designed
     /// to help downstream statistical calculations that could use the number of overlapping
     /// basepairs, overlapping fraction, etc.
-    pub fn apply_over_joins<F, V>(
+    pub fn map_over_joins<F, V>(
         mut self,
         func: F,
     ) -> Result<GRanges<VecRangesIndexed, Vec<V>>, GRangesError>
@@ -757,7 +796,7 @@ where
         ) -> V,
     {
         let data = self.take_data()?;
-        let transformed_data: Vec<V> = data.apply(func);
+        let transformed_data: Vec<V> = data.map(func);
         let ranges = self.ranges;
         Ok(GRanges {
             ranges,
@@ -766,13 +805,26 @@ where
     }
 }
 
-/// Applies a function over joins for [`GRanges`] with both left and right data containers empty.
-///
-/// Since both data containers are empty, this function effectively acts as a no-op,
-/// directly returning a [`GRanges`] object with an empty vector, as there are no joins
-/// to apply the function to.
 impl GRanges<VecRangesIndexed, JoinDataBothEmpty> {
-    pub fn apply_over_joins<F, V>(
+    /// Apply a function over the [`JoinData`] inside this [`GRanges`].
+    ///
+    /// This is a powerful method that is used to summarize genomic overlaps. The
+    /// user-specified function, `func` is applied to each "join" item in this [`GRanges`]
+    /// object's data container (which is a [`JoinData`] storing the join information).
+    /// This supplied `func` function returns some generic type `V` per join, which could be
+    /// e.g. a median `f64` value, a `String` of all overlap right ranges' values concatenated,
+    /// etc.
+    ///
+    /// # Arugments 
+    /// * `func`: a function that takes a [`CombinedJoinDataLeftEmpty`] (which contains
+    ///           the associated data for the left range and overlapping right ranges)
+    ///           and summarizes it into a new type `V`.
+    ///
+    /// See [`CombinedJoinDataLeftEmpty`] and its convenience methods, which are designed
+    /// to help downstream statistical calculations that could use the number of overlapping
+    /// basepairs, overlapping fraction, etc.
+
+    pub fn map_over_joins<F, V>(
         mut self,
         func: F,
     ) -> Result<GRanges<VecRangesIndexed, Vec<V>>, GRangesError>
@@ -780,7 +832,7 @@ impl GRanges<VecRangesIndexed, JoinDataBothEmpty> {
         F: Fn(CombinedJoinDataBothEmpty) -> V,
     {
         let data = self.take_data()?;
-        let transformed_data: Vec<V> = data.apply(func);
+        let transformed_data: Vec<V> = data.map(func);
         let ranges = self.ranges;
         Ok(GRanges {
             ranges,
@@ -789,25 +841,28 @@ impl GRanges<VecRangesIndexed, JoinDataBothEmpty> {
     }
 }
 
-/// Applies a user-defined function over each join in the [`GRanges`], where the
-/// right data container of the join was empty.
-///
-/// This method is tailored for scenarios where there is meaningful data on the left to process,
-/// but the right side is empty. The function provided is applied to each item from the left data container.
-///
-/// # Parameters
-///
-/// * `func` - A function to apply to each [`Com
-///
-/// # Returns
-///
-/// A new [`GRanges`] object containing the results of applying `func` to each left data item.
-///
 impl<'a, DL: Clone + 'a> GRanges<VecRangesIndexed, JoinDataRightEmpty<DL>>
 where
     DL: IndexedDataContainer,
 {
-    pub fn apply_over_joins<F, V>(
+    /// Apply a function over the [`JoinData`] inside this [`GRanges`].
+    ///
+    /// This is a powerful method that is used to summarize genomic overlaps. The
+    /// user-specified function, `func` is applied to each "join" item in this [`GRanges`]
+    /// object's data container (which is a [`JoinData`] storing the join information).
+    /// This supplied `func` function returns some generic type `V` per join, which could be
+    /// e.g. a median `f64` value, a `String` of all overlap right ranges' values concatenated,
+    /// etc.
+    ///
+    /// # Arugments 
+    /// * `func`: a function that takes a [`CombinedJoinDataRightEmpty`] (which contains
+    ///           the associated data for the left range and overlapping right ranges)
+    ///           and summarizes it into a new type `V`.
+    ///
+    /// See [`CombinedJoinDataRightEmpty`] and its convenience methods, which are designed
+    /// to help downstream statistical calculations that could use the number of overlapping
+    /// basepairs, overlapping fraction, etc.
+    pub fn map_over_joins<F, V>(
         mut self,
         func: F,
     ) -> Result<GRanges<VecRangesIndexed, Vec<V>>, GRangesError>
@@ -815,7 +870,7 @@ where
         F: Fn(CombinedJoinDataRightEmpty<<DL as IndexedDataContainer>::OwnedItem>) -> V,
     {
         let data = self.take_data()?;
-        let transformed_data: Vec<V> = data.apply(func);
+        let transformed_data: Vec<V> = data.map(func);
         let ranges = self.ranges;
         Ok(GRanges {
             ranges,
@@ -824,23 +879,29 @@ where
     }
 }
 
-/// Applies a user-defined function over each join in the GRanges, where the left data container is empty.
-///
-/// Tailored for cases with meaningful data on the right and empty on the left. The provided
-/// function is applied to each item from the right data container.
-///
-/// # Parameters
-///
-/// * `func` - A function to apply to each right data item.
-///
-/// # Returns
-///
-/// A new `GRanges` object containing the results of applying `func` to each right data item.
 impl<'a, DR: Clone + 'a> GRanges<VecRangesIndexed, JoinDataLeftEmpty<'a, DR>>
 where
     DR: IndexedDataContainer,
 {
-    pub fn apply_over_joins<F, V>(
+    /// Apply a function over the [`JoinData`] inside this [`GRanges`].
+    ///
+    /// This is a powerful method that is used to summarize genomic overlaps. The
+    /// user-specified function, `func` is applied to each "join" item in this [`GRanges`]
+    /// object's data container (which is a [`JoinData`] storing the join information).
+    /// This supplied `func` function returns some generic type `V` per join, which could be
+    /// e.g. a median `f64` value, a `String` of all overlap right ranges' values concatenated,
+    /// etc.
+    ///
+    /// # Arugments 
+    /// * `func`: a function that takes a [`CombinedJoinDataLeftEmpty`] (which contains
+    ///           the associated data for the left range and overlapping right ranges)
+    ///           and summarizes it into a new type `V`.
+    ///
+    /// See [`CombinedJoinDataLeftEmpty`] and its convenience methods, which are designed
+    /// to help downstream statistical calculations that could use the number of overlapping
+    /// basepairs, overlapping fraction, etc.
+
+    pub fn map_over_joins<F, V>(
         mut self,
         func: F,
     ) -> Result<GRanges<VecRangesIndexed, Vec<V>>, GRangesError>
@@ -848,7 +909,7 @@ where
         F: Fn(CombinedJoinDataLeftEmpty<<DR as IndexedDataContainer>::OwnedItem>) -> V,
     {
         let data = self.take_data()?;
-        let transformed_data: Vec<V> = data.apply(func);
+        let transformed_data: Vec<V> = data.map(func);
         let ranges = self.ranges;
         Ok(GRanges {
             ranges,

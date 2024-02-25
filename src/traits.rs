@@ -10,7 +10,7 @@ use crate::{
     granges::GRanges,
     io::parsers::{FilteredRanges, UnwrappedRanges},
     ranges::GenomicRangeRecord,
-    Position,
+    Position, join::LeftGroupedJoin,
 };
 
 /// Traits for [`GRanges`] types that can be modified.
@@ -76,6 +76,22 @@ pub trait GenericRange: Clone {
     fn as_tuple(&self) -> (Position, Position, Option<usize>) {
         (self.start(), self.end(), self.index())
     }
+}
+
+/// The [`JoinDataOperations`] trait unifies common operations 
+/// over combined join data types ([`CombinedJoinData`], 
+/// CombinedJoinDataBothEmpty`], etc).
+/// 
+///
+/// [`CombinedJoinData`] crate::granges::join::CombinedJoinData
+/// [`CombinedJoinDataBothEmpty`] crate::granges::join::CombinedJoinDataBothEmpty
+pub trait JoinDataOperations<DL, DR> {
+    type LeftDataElementType;
+    type RightDataElementType;
+
+    fn join(&self) -> LeftGroupedJoin;
+    fn left_data(&self) -> Option<Self::LeftDataElementType>;
+    fn right_data(&self) -> Option<Vec<Self::RightDataElementType>>;
 }
 
 /// The [`GenericRangeOperations`] trait extends additional functionality to [`GenericRange`],

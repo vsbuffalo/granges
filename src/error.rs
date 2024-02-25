@@ -64,4 +64,6 @@ pub enum GRangesError {
     UnsupportedGenomicRangesFileFormat,
     #[error("Command line argument error: {0}")]
     ArgumentError(#[from] clap::error::Error),
+    #[error("No such operation: {0}")]
+    NoSuchOperation,
 }

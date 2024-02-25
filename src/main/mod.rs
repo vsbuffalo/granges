@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use granges::{
     commands::{granges_adjust, granges_filter, granges_flank, ProcessingMode},
     prelude::GRangesError,
-    Position, PositionOffset,
+    Position, PositionOffset, data::operations::{match_operation, Operation},
 };
 
 #[cfg(feature = "dev-commands")]
@@ -128,6 +128,10 @@ enum Commands {
         #[arg(short, long, required = true)]
         right: PathBuf,
 
+        /// Operation 
+        #[clap(short, long, value_parser = clap::value_parser!(Operation), multiple_occurrences(true))]
+        operation: Vec<Operation>,
+
         /// An optional output file (standard output will be used if not specified)
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -223,11 +227,11 @@ fn run() -> Result<(), GRangesError> {
             genome,
             left,
             right,
+            operation,
             output,
             skip_missing,
             in_mem,
         }) => {
-            unimplemented!()
         }
 
         #[cfg(feature = "dev-commands")]
