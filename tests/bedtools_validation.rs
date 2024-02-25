@@ -16,6 +16,7 @@ fn test_random_bed3file_filetype_detect() {
         100_000,
         Some(&random_bedfile_path),
         true,
+        false,
     )
     .expect("could not generate random BED file");
 
@@ -35,6 +36,7 @@ fn test_against_bedtools_slop() {
         100_000,
         Some(&random_bedfile_path),
         true,
+        false,
     )
     .expect("could not generate random BED file");
 
@@ -92,6 +94,7 @@ fn test_against_bedtools_intersect_wa() {
         num_ranges,
         Some(&random_bedfile_right),
         true,
+        false,
     )
     .expect("could not generate random BED file");
 
@@ -141,6 +144,7 @@ fn test_against_bedtools_flank() {
         num_ranges,
         Some(&random_bedfile),
         true,
+        false,
     )
     .expect("could not generate random BED file");
 
@@ -182,4 +186,45 @@ fn test_against_bedtools_flank() {
     granges_ranges.sort();
 
     assert_eq!(bedtools_ranges, granges_ranges);
+}
+
+#[test]
+fn test_against_bedtools_makewindows() {
+    // some weird widths, steps to try to catch remainder issues
+    let widths = vec![131123, 1_000_0013];
+    let steps = vec![10_001, 10_113];
+
+    for width in widths.iter() {
+        for step in steps.iter() {
+            let bedtools_output = Command::new("bedtools")
+                .arg("makewindows")
+                .arg("-g")
+                .arg("tests_data/hg38_seqlens.tsv")
+                .arg("-w")
+                .arg(width.to_string())
+                .arg("-s")
+                .arg(step.to_string())
+                .output()
+                .expect("bedtools slop failed");
+
+            let granges_output = Command::new(granges_binary_path())
+                .arg("windows")
+                .arg("--genome")
+                .arg("tests_data/hg38_seqlens.tsv")
+                .arg("--width")
+                .arg(width.to_string())
+                .arg("--step")
+                .arg(step.to_string())
+                .output()
+                .expect("granges windows failed");
+
+            assert!(bedtools_output.status.success(), "{:?}", bedtools_output);
+            assert!(granges_output.status.success(), "{:?}", granges_output);
+
+            assert_eq!(
+                String::from_utf8_lossy(&bedtools_output.stdout),
+                String::from_utf8_lossy(&granges_output.stdout)
+            );
+        }
+    }
 }

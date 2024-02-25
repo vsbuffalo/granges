@@ -258,14 +258,14 @@ impl<'a, R: IterableRangeContainer> GenomicRangesTsvSerialize<'a, R> for GRanges
     /// will be a BED3 file.
     ///
     /// # Arguments
-    /// * `output`: either `None` (for standard out) or file path. If the filepath
-    ///             ends in `.gz`, the output will be gzip-compressed.
+    /// * `output`: either `None` (for standard out) or file path.
     /// * `config`: a [`TsvConfig`], which contains the TSV output settings.
     fn to_tsv(
         &'a self,
         output: Option<impl Into<PathBuf>>,
         config: &TsvConfig,
     ) -> Result<(), GRangesError> {
+        // TODO gzip output handling
         // output stream -- header is None for now (TODO)
         let output = output.map_or(OutputStream::new_stdout(None), |file| {
             OutputStream::new(file, None)
@@ -435,29 +435,26 @@ impl GRangesEmpty<VecRangesEmpty> {
     ) -> Result<GRangesEmpty<VecRangesEmpty>, GRangesError> {
         let mut gr: GRangesEmpty<VecRangesEmpty> = GRangesEmpty::new_vec(seqlens);
 
-        // have we encountered a remainder chunk?
-
-        let mut remainder = false;
         // iterate over each chromosome and create windows
         for (seqname, len) in seqlens {
             let mut start = 0;
             while start < *len {
-                let mut end = start + width - 1;
+                let mut end = start + width;
 
                 if end >= *len {
+                    // the end is past the sequence length
                     if chop {
+                        // do not add any remainder
                         break;
                     } else {
-                        end = std::cmp::min(end, len - 1);
+                        // truncate end, push, and break
+                        end = std::cmp::min(end, *len);
+                        gr.push_range(seqname, start, end)?;
                     }
+                } else {
+                    // push a normal window
+                    gr.push_range(seqname, start, end)?;
                 }
-                if end - start + 1 < width {
-                    if remainder {
-                        break;
-                    }
-                    remainder = true;
-                }
-                gr.push_range(seqname, start, end + 1)?;
                 start += step.unwrap_or(width);
             }
         }
@@ -1386,11 +1383,11 @@ mod tests {
 
     #[test]
     fn test_from_windows() {
-        let sl = seqlens!( "chr1" => 35);
+        let sl = seqlens!( "chr1" => 35 );
+
         // Test chop
         let gr = GRangesEmpty::from_windows(&sl, 10, None, true).unwrap();
         assert_eq!(gr.len(), 3, "{:?}", gr);
-        dbg!(&gr);
         gr.iter_ranges().for_each(|r| assert_eq!(r.width(), 10));
 
         // Test no chop
@@ -1398,19 +1395,22 @@ mod tests {
         assert_eq!(gr.iter_ranges().last().unwrap().width(), 5);
 
         // Test sliding with step of 2, with chop
-        let sl = seqlens!( "chr1" => 21);
+        let sl = seqlens!( "chr1" => 21, "chr2" => 13 );
         let gr = GRangesEmpty::from_windows(&sl, 10, Some(2), true).unwrap();
-        let mut expected_ranges_chop: Vec<(String, Position, Position)> = vec![
+        let expected_ranges_chop: Vec<(String, Position, Position)> = vec![
             ("chr1", 0, 10),
             ("chr1", 2, 12),
             ("chr1", 4, 14),
             ("chr1", 6, 16),
             ("chr1", 8, 18),
             ("chr1", 10, 20),
+            ("chr2", 0, 10),
+            ("chr2", 2, 12),
         ]
         .into_iter()
         .map(|(seq, s, e)| (seq.to_string(), s, e))
         .collect();
+
         let seqnames = sl.keys().map(|x| x.to_string()).collect::<Vec<_>>();
         let actual_ranges: Vec<(String, Position, Position)> = gr
             .iter_ranges()
@@ -1420,13 +1420,36 @@ mod tests {
 
         // The same as above, without chop -- goes to seqlen with little remainder.
         let gr = GRangesEmpty::from_windows(&sl, 10, Some(2), false).unwrap();
-        expected_ranges_chop.push(("chr1".to_string(), 12, 21));
+        let expected_ranges_no_chop: Vec<(String, Position, Position)> = vec![
+            ("chr1", 0, 10),
+            ("chr1", 2, 12),
+            ("chr1", 4, 14),
+            ("chr1", 6, 16),
+            ("chr1", 8, 18),
+            ("chr1", 10, 20),
+            ("chr1", 12, 21),
+            ("chr1", 14, 21),
+            ("chr1", 16, 21),
+            ("chr1", 18, 21),
+            ("chr1", 20, 21),
+            ("chr2", 0, 10),
+            ("chr2", 2, 12),
+            ("chr2", 4, 13),
+            ("chr2", 6, 13),
+            ("chr2", 8, 13),
+            ("chr2", 10, 13),
+            ("chr2", 12, 13),
+        ]
+        .into_iter()
+        .map(|(seq, s, e)| (seq.to_string(), s, e))
+        .collect();
+
         let actual_ranges: Vec<(String, Position, Position)> = gr
             .iter_ranges()
             .map(|r| (r.seqname(&seqnames), r.start(), r.end()))
             .collect();
 
-        assert_eq!(actual_ranges, expected_ranges_chop);
+        assert_eq!(actual_ranges, expected_ranges_no_chop);
     }
 
     #[test]

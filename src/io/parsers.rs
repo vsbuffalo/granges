@@ -427,6 +427,10 @@ impl TsvSerialize for Option<Strand> {
 }
 
 /// The additional two BED5 columns.
+///
+/// # Fields
+/// * `name`: the feature name.
+/// * `score`: a score.
 #[derive(Clone, Debug)]
 pub struct Bed5Addition {
     pub name: String,

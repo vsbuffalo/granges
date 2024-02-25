@@ -12,7 +12,7 @@ use crate::{
     prelude::*,
     ranges::{operations::adjust_range, GenomicRangeEmptyRecord, GenomicRangeRecord},
     reporting::{CommandOutput, Report},
-    test_utilities::random_granges,
+    test_utilities::{random_granges, random_granges_mock_bed5},
     traits::TsvSerialize,
     Position, PositionOffset,
 };
@@ -469,23 +469,44 @@ pub fn granges_map(
     Ok(CommandOutput::new((), report))
 }
 
+/// Generate a BED3 file of genomic windows.
+pub fn granges_windows(
+    seqlens: impl Into<PathBuf>,
+    width: Position,
+    step: Option<Position>,
+    chop: bool,
+    output: Option<impl Into<PathBuf>>,
+) -> Result<CommandOutput<()>, GRangesError> {
+    let genome = read_seqlens(seqlens)?;
+    GRangesEmpty::from_windows(&genome, width, step, chop)?.to_tsv(output, &BED_TSV)?;
+    let report = Report::new();
+    Ok(CommandOutput::new((), report))
+}
+
 /// Generate a random BED-like file with genomic ranges.
 pub fn granges_random_bed(
     seqlens: impl Into<PathBuf>,
     num: usize,
     output: Option<impl Into<PathBuf>>,
     sort: bool,
+    bed5: bool,
 ) -> Result<CommandOutput<()>, GRangesError> {
     // get the genome info
     let genome = read_seqlens(seqlens)?;
 
-    let mut gr = random_granges(&genome, num)?;
-
-    if sort {
-        gr = gr.sort();
-    }
-
-    gr.to_tsv(output, &BED_TSV)?;
+    if bed5 {
+        let mut gr = random_granges_mock_bed5(&genome, num)?;
+        if sort {
+            gr = gr.sort()
+        }
+        gr.to_tsv(output, &BED_TSV)?;
+    } else {
+        let mut gr = random_granges(&genome, num)?;
+        if sort {
+            gr = gr.sort();
+        }
+        gr.to_tsv(output, &BED_TSV)?;
+    };
 
     let report = Report::new();
     Ok(CommandOutput::new((), report))

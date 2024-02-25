@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use granges::{
-    commands::{granges_adjust, granges_filter, granges_flank, granges_map, ProcessingMode},
+    commands::{
+        granges_adjust, granges_filter, granges_flank, granges_map, granges_windows, ProcessingMode,
+    },
     data::operations::Operation,
     prelude::GRangesError,
     Position, PositionOffset,
@@ -17,12 +19,27 @@ usage: granges [--help] <subcommand>
 
 Subcommands:
   
-  adjust: Adjust each genomic range, e.g. to add a kilobase to each end.
+  adjust:    Adjust each genomic range, e.g. to add a kilobase to each end.
 
-  filter: Filter the left ranges based on whether they have at least one
-          overlap with a right range. This is equivalent to a filtering
-          "semi-join" in SQL terminology. 
+  filter:    Filter the left ranges based on whether they have at least one
+             overlap with a right range. This is equivalent to a filtering
+             "semi-join" in SQL terminology. 
+
+  map:       Compute the left grouped overlaps between the left genomic ranges
+             and right genomic ranges, and apply one or more operations to the 
+             score column of the right BED5 file.
           
+  windows:   Create a set of genomic windows of the specified width (in basepairs),
+             stepping the specified step size (the width, by default).
+          
+
+NOTE: granges is under active development. It is not currently meant to be
+a full replacement for other genomic ranges software, such as bedtools. The
+command line functionality currently used for testing and benchmarking.
+
+Please request features and report any issues on GitHub: 
+https://github.com/vsbuffalo/granges/issues
+
 "#;
 
 #[derive(Parser)]
@@ -38,6 +55,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Adjust the start, end, or both coordinates of each range by some
+    /// specified amount.
     Adjust {
         /// A TSV genome file of chromosome names and their lengths
         #[arg(short, long, required = true)]
@@ -60,6 +79,8 @@ enum Commands {
         sort: bool,
         // TODO add skip_missing here
     },
+    /// Filter out the left ranges that do not have overlaps with any
+    /// right ranges. This is a "semi-join" in SQL terminology.
     Filter {
         /// A TSV genome file of chromosome names and their lengths
         #[arg(short, long, required = true)]
@@ -82,6 +103,7 @@ enum Commands {
         #[arg(short, long)]
         skip_missing: bool,
     },
+    /// Compute the flanking regions for each range.
     Flank {
         /// A TSV genome file of chromosome names and their lengths
         #[arg(short, long, required = true)]
@@ -116,6 +138,11 @@ enum Commands {
         #[arg(long)]
         in_mem: bool,
     },
+    /// Do a "left grouped join", on the specified left and right genomic ranges,
+    /// and apply one or more functions to the BED5 scores for all right genomic
+    /// ranges.
+    ///
+    /// This is analogous to 'bedtools map'.
     Map {
         /// A TSV genome file of chromosome names and their lengths
         #[arg(short, long, required = true)]
@@ -142,6 +169,36 @@ enum Commands {
         #[arg(short, long)]
         skip_missing: bool,
     },
+    /// Create a set of genomic windows ranges using the specified width
+    /// and step size, and output to BED3.
+    ///
+    /// If --chop is set, the "remainder" windows at the end of a chromosome
+    /// that would have width less than that specified by --width are chopped
+    /// off.
+    ///
+    /// This is analogous to 'bedtools makewindows'.
+    Windows {
+        /// A TSV genome file of chromosome names and their lengths
+        #[arg(short, long, required = true)]
+        genome: PathBuf,
+
+        /// Width (in basepairs) of each window.
+        #[arg(short, long)]
+        width: Position,
+
+        /// Step width (by default: window size).
+        #[arg(short, long)]
+        step: Option<Position>,
+
+        /// If last window remainder is shorter than width, remove?
+        #[arg(short, long)]
+        chop: bool,
+
+        /// An optional output file (standard output will be used if not specified)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
     #[cfg(feature = "dev-commands")]
     RandomBed {
         /// a TSV genome file of chromosome names and their lengths
@@ -159,6 +216,10 @@ enum Commands {
         /// sort the ranges
         #[arg(short, long)]
         sort: bool,
+
+        /// add two additional columns (feature name and score) to mimic a BED5 file
+        #[arg(short, long)]
+        bed5: bool,
     },
 }
 
@@ -240,14 +301,21 @@ fn run() -> Result<(), GRangesError> {
                 *skip_missing,
             )
         }
-
+        Some(Commands::Windows {
+            genome,
+            width,
+            step,
+            chop,
+            output,
+        }) => granges_windows(genome, *width, *step, *chop, output.as_ref()),
         #[cfg(feature = "dev-commands")]
         Some(Commands::RandomBed {
             genome,
             num,
             output,
             sort,
-        }) => granges_random_bed(genome, *num, output.as_ref(), *sort),
+            bed5,
+        }) => granges_random_bed(genome, *num, output.as_ref(), *sort, *bed5),
         None => {
             println!("{}\n", INFO);
             std::process::exit(1);

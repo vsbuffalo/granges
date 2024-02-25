@@ -8,6 +8,7 @@ use crate::{
     create_granges_with_seqlens,
     error::GRangesError,
     granges::GRangesEmpty,
+    io::parsers::Bed5Addition,
     prelude::{GRanges, VecRangesIndexed},
     ranges::{
         coitrees::COITrees,
@@ -20,8 +21,8 @@ use crate::{
 use genomap::GenomeMap;
 use indexmap::IndexMap;
 #[cfg(feature = "ndarray")]
-use ndarray::{s, Array1, Array2};
-use rand::{seq::SliceRandom, thread_rng, Rng};
+use ndarray::{Array1, Array2};
+use rand::{distributions::Uniform, seq::SliceRandom, thread_rng, Rng};
 use tempfile::{Builder, NamedTempFile};
 
 /// Get the path to the `grange` command line tool after a build.
@@ -110,6 +111,48 @@ pub fn random_granges(
     Ok(gr)
 }
 
+/// Generate random strings, e.g. for mock feature names.
+fn generate_random_string(n: usize) -> String {
+    let mut rng = rand::thread_rng();
+    let letters: Vec<char> = ('a'..='z').collect();
+    let letters_dist = Uniform::from(0..letters.len());
+
+    (0..n).map(|_| letters[rng.sample(letters_dist)]).collect()
+}
+
+/// Generate a random float value, e.g. for a mock BED "score".
+fn generate_random_uniform(start: f64, end: f64) -> f64 {
+    let mut rng = rand::thread_rng();
+    let uniform = Uniform::new(start, end); // Specify the range
+    rng.sample(uniform)
+}
+
+/// Build a random [`GRanges`] using a set of sequence lengths,
+/// with BED5 like data.
+pub fn random_granges_mock_bed5(
+    seqlens: &IndexMap<String, Position>,
+    num: usize,
+) -> Result<GRanges<VecRangesIndexed, Vec<Bed5Addition>>, GRangesError> {
+    let mut rng = thread_rng();
+
+    let mut gr = GRanges::new_vec(seqlens);
+
+    let seqnames: Vec<String> = seqlens.keys().cloned().collect();
+    for _ in 0..num {
+        let seqname = seqnames.choose(&mut rng).unwrap();
+        let chrom_len = *seqlens
+            .get(seqname)
+            .ok_or_else(|| GRangesError::MissingSequence(seqname.clone()))?;
+        let (start, end) = random_range(chrom_len);
+        let bed5_cols = Bed5Addition {
+            name: generate_random_string(8),
+            score: generate_random_uniform(0.0, 1.0),
+        };
+        gr.push_range(seqname, start, end, bed5_cols)?;
+    }
+    Ok(gr)
+}
+
 /// Build random [`COITrees`] from a random [`VecRanges`].
 pub fn random_coitrees() -> COITrees<()> {
     let vr = random_vecranges(100);
@@ -133,6 +176,7 @@ pub fn random_bed3file(length: usize) -> NamedTempFile {
         length,
         Some(temp_bedfile.path()),
         true,
+        false,
     )
     .expect("could not generate random BED file");
     temp_bedfile
@@ -148,6 +192,7 @@ pub fn random_bed5file(length: usize) -> NamedTempFile {
         "tests_data/hg38_seqlens.tsv",
         length,
         Some(temp_bedfile.path()),
+        true,
         true,
     )
     .expect("could not generate random BED file");
