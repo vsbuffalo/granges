@@ -3,8 +3,12 @@
 use std::path::PathBuf;
 
 use crate::{
-    data::operations::Operation,
-    io::{parsers::{GenomicRangesParser, Bed5Iterator}, OutputStream},
+    data::{operations::Operation, DatumType},
+    io::{
+        parsers::{Bed5Iterator, GenomicRangesParser},
+        tsv::BED_TSV,
+        OutputStream,
+    },
     prelude::*,
     ranges::{operations::adjust_range, GenomicRangeEmptyRecord, GenomicRangeRecord},
     reporting::{CommandOutput, Report},
@@ -80,7 +84,7 @@ pub fn granges_adjust(
             let possibly_adjusted_range = adjust_range(range, -both, both, length);
 
             if let Some(range_adjusted) = possibly_adjusted_range {
-                writeln!(writer, "{}", &range_adjusted.to_tsv())?;
+                writeln!(writer, "{}", &range_adjusted.to_tsv(&BED_TSV))?;
             } else {
                 skipped_ranges += 1;
             }
@@ -101,10 +105,11 @@ pub fn granges_adjust(
         match ranges_iter {
             GenomicRangesParser::Bed3(iter) => {
                 let gr = GRangesEmpty::from_iter(iter, &genome)?;
-                gr.adjust_ranges(-both, both).to_tsv(output)?
+                gr.adjust_ranges(-both, both).to_tsv(output, &BED_TSV)?
             }
             GenomicRangesParser::Bed5(iter) => {
-                unimplemented!()
+                let gr = GRanges::from_iter(iter, &genome)?;
+                gr.adjust_ranges(-both, both).to_tsv(output, &BED_TSV)?
             }
             GenomicRangesParser::Bedlike(iter) => {
                 // Note the call to try_unwrap_data() here: this is because
@@ -112,7 +117,7 @@ pub fn granges_adjust(
                 // values means that writing to TSV doesn't have to deal with this (which
                 // always creates headaches).
                 let gr = GRanges::from_iter(iter.try_unwrap_data(), &genome)?;
-                gr.adjust_ranges(-both, both).to_tsv(output)?
+                gr.adjust_ranges(-both, both).to_tsv(output, &BED_TSV)?
             }
             GenomicRangesParser::Unsupported => {
                 return Err(GRangesError::UnsupportedGenomicRangesFileFormat)
@@ -158,7 +163,7 @@ pub fn granges_filter(
     let right_iter = GenomicRangesFile::parsing_iterator(right_path)?;
 
     // for reporting stuff to the user
-    let mut report = Report::new();
+    let report = Report::new();
 
     match (left_iter, right_iter) {
         (GenomicRangesParser::Bed3(left), GenomicRangesParser::Bed3(right)) => {
@@ -176,7 +181,7 @@ pub fn granges_filter(
             let right_gr = right_gr.into_coitrees()?;
 
             let semijoin = left_gr.filter_overlaps(&right_gr)?;
-            semijoin.to_tsv(output)?;
+            semijoin.to_tsv(output, &BED_TSV)?;
 
             Ok(CommandOutput::new((), report))
         }
@@ -198,7 +203,7 @@ pub fn granges_filter(
             let right_gr = right_gr.into_coitrees()?;
 
             let semijoin = left_gr.filter_overlaps(&right_gr)?;
-            semijoin.to_tsv(output)?;
+            semijoin.to_tsv(output, &BED_TSV)?;
 
             Ok(CommandOutput::new((), report))
         }
@@ -218,7 +223,7 @@ pub fn granges_filter(
             let right_gr = right_gr.into_coitrees()?;
 
             let semijoin = left_gr.filter_overlaps(&right_gr)?;
-            semijoin.to_tsv(output)?;
+            semijoin.to_tsv(output, &BED_TSV)?;
 
             Ok(CommandOutput::new((), report))
         }
@@ -241,7 +246,7 @@ pub fn granges_filter(
             let right_gr = right_gr.into_coitrees()?;
 
             let intersection = left_gr.filter_overlaps(&right_gr)?;
-            intersection.to_tsv(output)?;
+            intersection.to_tsv(output, &BED_TSV)?;
 
             Ok(CommandOutput::new((), report))
         }
@@ -298,7 +303,7 @@ pub fn granges_flank(
                 } else {
                     GRangesEmpty::from_iter(iter, &genome)?
                 };
-                gr.flanking_ranges(left, right)?.to_tsv(output)?
+                gr.flanking_ranges(left, right)?.to_tsv(output, &BED_TSV)?
             }
             GenomicRangesParser::Bed5(_iter) => {
                 unimplemented!()
@@ -309,7 +314,7 @@ pub fn granges_flank(
                 } else {
                     GRanges::from_iter(iter.try_unwrap_data(), &genome)?
                 };
-                gr.flanking_ranges(left, right)?.to_tsv(output)?
+                gr.flanking_ranges(left, right)?.to_tsv(output, &BED_TSV)?
             }
             GenomicRangesParser::Unsupported => {
                 return Err(GRangesError::UnsupportedGenomicRangesFileFormat)
@@ -336,7 +341,7 @@ pub fn granges_flank(
                             let flanking_ranges = range
                                 .flanking_ranges::<GenomicRangeRecord<String>>(left, right, length);
                             for flanking_range in flanking_ranges {
-                                writeln!(writer, "{}", &flanking_range.to_tsv())?;
+                                writeln!(writer, "{}", &flanking_range.to_tsv(&BED_TSV))?;
                             }
                         }
                     } else {
@@ -350,7 +355,7 @@ pub fn granges_flank(
                             let flanking_ranges = range
                                 .flanking_ranges::<GenomicRangeEmptyRecord>(left, right, length);
                             for flanking_range in flanking_ranges {
-                                writeln!(writer, "{}", &flanking_range.to_tsv())?;
+                                writeln!(writer, "{}", &flanking_range.to_tsv(&BED_TSV))?;
                             }
                         }
                     }
@@ -370,7 +375,7 @@ pub fn granges_flank(
                             let flanking_ranges = range
                                 .flanking_ranges::<GenomicRangeRecord<String>>(left, right, length);
                             for flanking_range in flanking_ranges {
-                                writeln!(writer, "{}", &flanking_range.to_tsv())?;
+                                writeln!(writer, "{}", &flanking_range.to_tsv(&BED_TSV))?;
                             }
                         }
                     } else {
@@ -384,7 +389,7 @@ pub fn granges_flank(
                             let flanking_ranges = range
                                 .flanking_ranges::<GenomicRangeEmptyRecord>(left, right, length);
                             for flanking_range in flanking_ranges {
-                                writeln!(writer, "{}", &flanking_range.to_tsv())?;
+                                writeln!(writer, "{}", &flanking_range.to_tsv(&BED_TSV))?;
                             }
                         }
                     }
@@ -398,7 +403,6 @@ pub fn granges_flank(
     Ok(CommandOutput::new((), report))
 }
 
-
 /// # Developer Notes
 /// This function is a great way to see GRange's methods in action.
 pub fn granges_map(
@@ -411,7 +415,7 @@ pub fn granges_map(
 ) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
     let seqnames: Vec<String> = genome.keys().cloned().collect();
-    let mut report = Report::new();
+    let report = Report::new();
 
     let left_iter = Bed3Iterator::new(left_path)?;
     let right_iter = Bed5Iterator::new(right_path)?;
@@ -427,22 +431,40 @@ pub fn granges_map(
         right_gr = GRanges::from_iter(right_iter, &genome)?;
     }
 
-    let right_gr = right_gr.into_coitrees()?
-        .map_data(|bed5_cols| {
-            // extract out just the score
-            bed5_cols.score
-        })?;
+    if left_gr.is_empty() {
+        return Err(GRangesError::NoRows);
+    }
+    if right_gr.is_empty() {
+        return Err(GRangesError::NoRows);
+    }
 
-    let left_join = left_gr.left_overlaps(&right_gr)?;
+    let right_gr = {
+        // Convert to interval trees for join.
+        right_gr
+            .into_coitrees()?
+            // Select out the score.
+            .map_data(|bed5_cols| {
+                // Extract out just the score.
+                bed5_cols.score
+            })?
+    };
 
-    let new_column = left_join.map_over_joins(|join_data| {
-        join_data.
-        operations.iter().map(|operation| operation.run(data)).collect()
+    // Find the overlaps.
+    let left_join_gr = left_gr.left_overlaps(&right_gr)?;
+
+    // Process all the overlaps.
+    let result_gr = left_join_gr.map_over_joins(|join_data| {
+        // Get the "right data" -- the BED5 scores.
+        let overlap_scores = join_data.right_data;
+
+        // Run all operations on the scores.
+        operations
+            .iter()
+            .map(|operation| operation.run(overlap_scores.as_ref()))
+            .collect::<Vec<DatumType>>()
     })?;
 
-
-    // TODO -- map function
-    // left_join.to_tsv(output)?;
+    result_gr.to_tsv(output, &BED_TSV)?;
 
     Ok(CommandOutput::new((), report))
 }
@@ -453,7 +475,7 @@ pub fn granges_random_bed(
     num: usize,
     output: Option<impl Into<PathBuf>>,
     sort: bool,
-    ) -> Result<CommandOutput<()>, GRangesError> {
+) -> Result<CommandOutput<()>, GRangesError> {
     // get the genome info
     let genome = read_seqlens(seqlens)?;
 
@@ -463,7 +485,7 @@ pub fn granges_random_bed(
         gr = gr.sort();
     }
 
-    gr.to_tsv(output)?;
+    gr.to_tsv(output, &BED_TSV)?;
 
     let report = Report::new();
     Ok(CommandOutput::new((), report))

@@ -6,11 +6,16 @@ use std::path::PathBuf;
 use indexmap::IndexMap;
 
 use crate::{
+    data::DatumType,
     error::GRangesError,
     granges::GRanges,
-    io::parsers::{FilteredRanges, UnwrappedRanges},
+    io::{
+        parsers::{FilteredRanges, UnwrappedRanges},
+        tsv::TsvConfig,
+    },
+    join::LeftGroupedJoin,
     ranges::GenomicRangeRecord,
-    Position, join::LeftGroupedJoin,
+    Position,
 };
 
 /// Traits for [`GRanges`] types that can be modified.
@@ -27,7 +32,7 @@ pub trait AsGRangesRef<'a, C, T> {
 }
 
 /// The [`LeftOverlaps`] trait provides compile time polymorphic behavior
-/// over its associated [`LeftOverlaps::Output`] type and its `Right` 
+/// over its associated [`LeftOverlaps::Output`] type and its `Right`
 /// generic type.
 pub trait LeftOverlaps<'a, Right> {
     type Output;
@@ -39,7 +44,11 @@ pub trait LeftOverlaps<'a, Right> {
 /// object, for some mix of generic types, to a TSV file.
 pub trait GenomicRangesTsvSerialize<'a, C: RangeContainer> {
     /// Output the TSV version of this [`GRanges`] object.
-    fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError>;
+    fn to_tsv(
+        &'a self,
+        output: Option<impl Into<PathBuf>>,
+        config: &TsvConfig,
+    ) -> Result<(), GRangesError>;
 }
 
 /// The [`GenericRange`] trait defines common functionality for all range types.
@@ -78,10 +87,10 @@ pub trait GenericRange: Clone {
     }
 }
 
-/// The [`JoinDataOperations`] trait unifies common operations 
-/// over combined join data types ([`CombinedJoinData`], 
+/// The [`JoinDataOperations`] trait unifies common operations
+/// over combined join data types ([`CombinedJoinData`],
 /// CombinedJoinDataBothEmpty`], etc).
-/// 
+///
 ///
 /// [`CombinedJoinData`] crate::granges::join::CombinedJoinData
 /// [`CombinedJoinDataBothEmpty`] crate::granges::join::CombinedJoinDataBothEmpty
@@ -89,9 +98,22 @@ pub trait JoinDataOperations<DL, DR> {
     type LeftDataElementType;
     type RightDataElementType;
 
-    fn join(&self) -> LeftGroupedJoin;
-    fn left_data(&self) -> Option<Self::LeftDataElementType>;
-    fn right_data(&self) -> Option<Vec<Self::RightDataElementType>>;
+    fn join(&self) -> &LeftGroupedJoin;
+    fn left_data(&self) -> Option<&Self::LeftDataElementType>;
+    fn right_data(&self) -> Option<&Vec<Self::RightDataElementType>>;
+}
+
+/// Helper trait to convert selected fields into `DataType`
+pub trait IntoDatumType {
+    fn into_data_type(self) -> DatumType;
+}
+
+// TODO
+pub trait Selection {
+    fn select_by_name(&self, name: &str) -> DatumType;
+    fn select(&self, names: &[String]) -> Vec<DatumType> {
+        names.iter().map(|name| self.select_by_name(name)).collect()
+    }
 }
 
 /// The [`GenericRangeOperations`] trait extends additional functionality to [`GenericRange`],
@@ -274,33 +296,5 @@ pub trait Sequences<'a> {
 /// Defines how to serialize something to TSV.
 pub trait TsvSerialize {
     // Serialize something to a TSV [`String`].
-    fn to_tsv(&self) -> String;
-}
-
-impl TsvSerialize for &String {
-    fn to_tsv(&self) -> String {
-        self.to_string()
-    }
-}
-
-impl TsvSerialize for String {
-    fn to_tsv(&self) -> String {
-        self.to_string()
-    }
-}
-
-impl TsvSerialize for Option<String> {
-    fn to_tsv(&self) -> String {
-        self.as_ref()
-            .map_or("".to_string(), |x| format!("\t{}", x.to_tsv()))
-    }
-}
-
-impl<U: TsvSerialize> TsvSerialize for Vec<U> {
-    fn to_tsv(&self) -> String {
-        self.iter()
-            .map(|x| x.to_tsv())
-            .collect::<Vec<_>>()
-            .join("\t")
-    }
+    fn to_tsv(&self, config: &TsvConfig) -> String;
 }

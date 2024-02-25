@@ -159,8 +159,8 @@ pub mod prelude {
     pub use crate::traits::{
         AsGRangesRef, GeneralRangeRecordIterator, GenericRange, GenericRangeOperations,
         GenomicRangeRecordUnwrappable, GenomicRangesTsvSerialize, IndexedDataContainer,
-        IntoIterableRangesContainer, IterableRangeContainer, TsvSerialize,
-        LeftOverlaps,
+        IntoDatumType, IntoIterableRangesContainer, IterableRangeContainer, JoinDataOperations,
+        LeftOverlaps, TsvSerialize,
     };
 
     pub use crate::seqlens;

@@ -1,35 +1,32 @@
 //! Implementations of various operations on data.
 //!
 
+use clap::ValueEnum;
 use num_traits::{Float, ToPrimitive};
 use std::iter::Sum;
 
-use crate::error::GRangesError;
+use super::DatumType;
+use crate::traits::IntoDatumType;
 
 /// Calculate the median.
 ///
 /// This will clone and turn `numbers` into a `Vec`.
-pub fn median<F: Float + Ord + Sum>(numbers: &[F]) -> F {
+pub fn median<F: Float + Sum>(numbers: &[F]) -> Option<F> {
+    if numbers.is_empty() {
+        return None;
+    }
     let mut numbers = numbers.to_vec();
-    numbers.sort_unstable();
+    numbers.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mid = numbers.len() / 2;
     if numbers.len() % 2 == 0 {
-        (numbers[mid - 1] + numbers[mid]) / F::from(2.0).unwrap()
+        Some((numbers[mid - 1] + numbers[mid]) / F::from(2.0).unwrap())
     } else {
-        numbers[mid]
+        Some(numbers[mid])
     }
 }
 
-/// A subset of types that represent operation results types.
-pub enum OperationResult<T>
-where
-T: Float,
-{
-    Float(T),
-    String(String),
-}
-
 /// The (subset of) standard `bedtools map` operations.
+#[derive(Clone, Debug, ValueEnum)]
 pub enum Operation {
     Sum,
     Min,
@@ -40,36 +37,49 @@ pub enum Operation {
 }
 
 impl Operation {
-    /// Do a particular (summarizing) operation on some generic data.
-    pub fn run<T>(&self, data: &[T]) -> Option<OperationResult<T>>
-        where
-        T: Float + Sum<T> + ToPrimitive + Ord + Clone + ToString,
-        {
-            match self {
-                Operation::Sum => {
+    pub fn run<T: IntoDatumType>(&self, data: &[T]) -> DatumType
+    where
+        T: Float + Sum<T> + ToPrimitive + Clone + ToString,
+    {
+        match self {
+            Operation::Sum => {
+                let sum: T = data.iter().cloned().sum();
+                sum.into_data_type()
+            }
+            Operation::Min => {
+                let min = data
+                    .iter()
+                    .filter(|x| x.is_finite())
+                    .cloned()
+                    .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater));
+                min.map_or(DatumType::NoValue, |x| x.into_data_type())
+            }
+            Operation::Max => {
+                let max = data
+                    .iter()
+                    .filter(|x| x.is_finite())
+                    .cloned()
+                    .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Less));
+                max.map_or(DatumType::NoValue, |x| x.into_data_type())
+            }
+            Operation::Mean => {
+                if data.is_empty() {
+                    DatumType::NoValue
+                } else {
                     let sum: T = data.iter().cloned().sum();
-                    Some(OperationResult::Float(sum))
-                }
-                Operation::Min => data.iter().cloned().min().map(OperationResult::Float),
-                Operation::Max => data.iter().cloned().max().map(OperationResult::Float),
-                Operation::Mean => {
-                    if data.is_empty() {
-                        None
-                    } else {
-                        let sum: T = data.iter().cloned().sum();
-                        let mean = sum / T::from(data.len()).unwrap();
-                        Some(OperationResult::Float(mean))
-                    }
-                }
-                Operation::Median => Some(OperationResult::Float(median(data))),
-                Operation::Collapse => {
-                    let collapsed = data
-                        .iter()
-                        .map(|num| num.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    Some(OperationResult::String(collapsed))
+                    let mean = sum / T::from(data.len()).unwrap();
+                    mean.into_data_type()
                 }
             }
+            Operation::Median => median(data).map_or(DatumType::NoValue, |x| x.into_data_type()),
+            Operation::Collapse => {
+                let collapsed = data
+                    .iter()
+                    .map(|num| num.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                DatumType::String(collapsed)
+            }
         }
+    }
 }

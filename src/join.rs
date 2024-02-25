@@ -110,33 +110,33 @@ impl<'a, DL, DR> JoinData<'a, DL, DR> {
         self.len() == 0
     }
 
-    ///// Create an iterator over the joins.
-    //pub fn iter(&'a self) -> JoinDataIterator<'a, DL, DR> {
-    //    JoinDataIterator {
-    //        inner: self.joins.iter(),
-    //        left_data: self.left_data.as_ref(),
-    //        right_data: self.right_data,
-    //    }
-    //}
+    /// Create an iterator over the joins.
+    pub fn iter(&'a self) -> JoinDataIterator<'a, DL, DR> {
+        JoinDataIterator {
+            inner: self.joins.iter(),
+            left_data: Some(&self.left_data),
+            right_data: Some(self.right_data),
+        }
+    }
 }
 
 pub struct CombinedJoinData<DL, DR> {
-    pub join: LeftGroupedJoin,   // Information on the join
-    pub left_data: DL,           // The left data element
-    pub right_data: Vec<DR>,     // The right data elements
+    pub join: LeftGroupedJoin, // Information on the join
+    pub left_data: DL,         // The left data element
+    pub right_data: Vec<DR>,   // The right data elements
 }
 
 impl<DL, DR> JoinDataOperations<DL, DR> for CombinedJoinData<DL, DR> {
     type LeftDataElementType = DL;
     type RightDataElementType = DR;
-    fn join(&self) -> LeftGroupedJoin {
-        self.join
+    fn join(&self) -> &LeftGroupedJoin {
+        &self.join
     }
-    fn left_data(&self) -> Option<Self::LeftDataElementType> {
-        Some(self.left_data)
+    fn left_data(&self) -> Option<&Self::LeftDataElementType> {
+        Some(&self.left_data)
     }
-    fn right_data(&self) -> Option<Vec<Self::RightDataElementType>> {
-        Some(self.right_data)
+    fn right_data(&self) -> Option<&Vec<Self::RightDataElementType>> {
+        Some(&self.right_data)
     }
 }
 
@@ -156,20 +156,18 @@ where
             >,
         ) -> V,
     {
-        // Cloning `left_data` and `right_data` to ensure they live long enough.
-        // This might not be the most efficient but ensures lifetime correctness.
-
         self.joins
             .iter()
             .map(|join| {
                 let left_data = self.left_data.get_owned(join.left.unwrap());
                 let right_data = join
-                    .rights.as_ref()
+                    .rights
+                    .as_ref()
                     .unwrap()
                     .iter()
                     .map(|idx| self.right_data.get_owned(*idx))
                     .collect();
-                // Now `func` is applied to each `CombinedJoinData`
+
                 func(CombinedJoinData {
                     join: join.clone(),
                     left_data,
@@ -209,6 +207,15 @@ impl<'a, DR> JoinDataLeftEmpty<'a, DR> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Create an iterator over the joins.
+    pub fn iter(&'a self) -> JoinDataIterator<'a, (), DR> {
+        JoinDataIterator {
+            inner: self.joins.iter(),
+            left_data: None,
+            right_data: Some(self.right_data),
+        }
+    }
 }
 
 pub struct CombinedJoinDataLeftEmpty<DR> {
@@ -219,17 +226,16 @@ pub struct CombinedJoinDataLeftEmpty<DR> {
 impl<DR> JoinDataOperations<(), DR> for CombinedJoinDataLeftEmpty<DR> {
     type LeftDataElementType = ();
     type RightDataElementType = DR;
-    fn join(&self) -> LeftGroupedJoin {
-        self.join
+    fn join(&self) -> &LeftGroupedJoin {
+        &self.join
     }
-    fn left_data(&self) -> Option<Self::LeftDataElementType> {
+    fn left_data(&self) -> Option<&Self::LeftDataElementType> {
         None
     }
-    fn right_data(&self) -> Option<Vec<Self::RightDataElementType>> {
-        Some(self.right_data)
+    fn right_data(&self) -> Option<&Vec<Self::RightDataElementType>> {
+        Some(&self.right_data)
     }
 }
-
 
 impl<'a, DR> JoinDataLeftEmpty<'a, DR>
 where
@@ -241,19 +247,19 @@ where
     where
         F: Fn(CombinedJoinDataLeftEmpty<<DR as IndexedDataContainer>::OwnedItem>) -> V,
     {
-        // Cloning `left_data` and `right_data` to ensure they live long enough.
-        // This might not be the most efficient but ensures lifetime correctness.
-
+        // TODO/OPTIMIZE: would consuming here (and analagous funcs) be better/faster?
+        // Would require a bit of a redesign.
         self.joins
             .iter()
             .map(|join| {
-                let right_data = join
-                    .rights.as_ref()
-                    .unwrap()
-                    .iter()
-                    .map(|idx| self.right_data.get_owned(*idx))
-                    .collect();
-                // Now `func` is applied to each `CombinedJoinDataLeftEmpty`
+                let right_indices = join.rights.as_ref();
+                let right_data = right_indices.map_or(Vec::new(), |indices| {
+                    indices
+                        .iter()
+                        .map(|idx| self.right_data.get_owned(*idx))
+                        .collect()
+                });
+
                 func(CombinedJoinDataLeftEmpty {
                     join: join.clone(),
                     right_data,
@@ -292,6 +298,15 @@ impl<'a, DL> JoinDataRightEmpty<DL> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Create an iterator over the joins.
+    pub fn iter(&'a self) -> JoinDataIterator<'a, DL, ()> {
+        JoinDataIterator {
+            inner: self.joins.iter(),
+            left_data: Some(&self.left_data),
+            right_data: None,
+        }
+    }
 }
 
 pub struct CombinedJoinDataRightEmpty<DL> {
@@ -299,22 +314,19 @@ pub struct CombinedJoinDataRightEmpty<DL> {
     pub left_data: DL,         // The right data element
 }
 
-
 impl<DL> JoinDataOperations<DL, ()> for CombinedJoinDataRightEmpty<DL> {
     type LeftDataElementType = DL;
     type RightDataElementType = ();
-    fn join(&self) -> LeftGroupedJoin {
-        self.join
+    fn join(&self) -> &LeftGroupedJoin {
+        &self.join
     }
-    fn left_data(&self) -> Option<Self::LeftDataElementType> {
-        Some(self.left_data)
+    fn left_data(&self) -> Option<&Self::LeftDataElementType> {
+        Some(&self.left_data)
     }
-    fn right_data(&self) -> Option<Vec<Self::RightDataElementType>> {
+    fn right_data(&self) -> Option<&Vec<Self::RightDataElementType>> {
         None
     }
 }
-
-
 
 impl<'a, DL> JoinDataRightEmpty<DL>
 where
@@ -326,14 +338,11 @@ where
     where
         F: Fn(CombinedJoinDataRightEmpty<<DL as IndexedDataContainer>::OwnedItem>) -> V,
     {
-        // Cloning `left_data` and `right_data` to ensure they live long enough.
-        // This might not be the most efficient but ensures lifetime correctness.
-
         self.joins
             .iter()
             .map(|join| {
                 let left_data = self.left_data.get_owned(join.left.unwrap());
-                // Now `func` is applied to each `CombinedJoinDataRightEmpty`
+
                 func(CombinedJoinDataRightEmpty {
                     join: join.clone(),
                     left_data,
@@ -371,27 +380,34 @@ impl JoinDataBothEmpty {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Create an iterator over the joins.
+    pub fn iter(&self) -> JoinDataIterator<'_, (), ()> {
+        JoinDataIterator {
+            inner: self.joins.iter(),
+            left_data: None,
+            right_data: None,
+        }
+    }
 }
 
 pub struct CombinedJoinDataBothEmpty {
     pub join: LeftGroupedJoin,
 }
 
-
 impl JoinDataOperations<(), ()> for CombinedJoinDataBothEmpty {
     type LeftDataElementType = ();
     type RightDataElementType = ();
-    fn join(&self) -> LeftGroupedJoin {
-        self.join
+    fn join(&self) -> &LeftGroupedJoin {
+        &self.join
     }
-    fn left_data(&self) -> Option<Self::LeftDataElementType> {
+    fn left_data(&self) -> Option<&Self::LeftDataElementType> {
         None
     }
-    fn right_data(&self) -> Option<Vec<Self::RightDataElementType>> {
+    fn right_data(&self) -> Option<&Vec<Self::RightDataElementType>> {
         None
     }
 }
-
 
 impl JoinDataBothEmpty {
     /// Apply `func` to each element, putting the results into the returned
@@ -400,9 +416,6 @@ impl JoinDataBothEmpty {
     where
         F: Fn(CombinedJoinDataBothEmpty) -> V,
     {
-        // Cloning `left_data` and `right_data` to ensure they live long enough.
-        // This might not be the most efficient but ensures lifetime correctness.
-
         self.joins
             .iter()
             .map(|join| func(CombinedJoinDataBothEmpty { join: join.clone() }))
@@ -410,24 +423,24 @@ impl JoinDataBothEmpty {
     }
 }
 
-///// An iterator over the [`LeftGroupedJoin`] types that represent
-///// information about overlaps right ranges have with a particular left range.
-/////
-///// This also contains references to the left and right data containers, for
-///// better ergonomics in downstream data processing.
-//pub struct JoinDataIterator<'a, DL, DR> {
-//    inner: std::slice::Iter<'a, LeftGroupedJoin>,
-//    pub left_data: Option<&'a DL>,
-//    pub right_data: Option<&'a DR>,
-//}
-//
-//impl<'a, DL, DR> Iterator for JoinDataIterator<'a, DL, DR> {
-//    type Item = &'a LeftGroupedJoin;
-//
-//    fn next(&mut self) -> Option<Self::Item> {
-//        self.inner.next()
-//    }
-//}
+/// An iterator over the [`LeftGroupedJoin`] types that represent
+/// information about overlaps right ranges have with a particular left range.
+///
+/// This also contains references to the left and right data containers, for
+/// better ergonomics in downstream data processing.
+pub struct JoinDataIterator<'a, DL, DR> {
+    inner: std::slice::Iter<'a, LeftGroupedJoin>,
+    pub left_data: Option<&'a DL>,
+    pub right_data: Option<&'a DR>,
+}
+
+impl<'a, DL, DR> Iterator for JoinDataIterator<'a, DL, DR> {
+    type Item = &'a LeftGroupedJoin;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
 
 #[cfg(test)]
 mod tests {

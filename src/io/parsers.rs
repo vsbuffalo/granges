@@ -109,11 +109,22 @@ use std::io::{BufRead, BufReader};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
+use crate::data::DatumType;
 use crate::error::GRangesError;
 use crate::io::file::InputStream;
 use crate::ranges::{GenomicRangeEmptyRecord, GenomicRangeRecord};
-use crate::traits::{GeneralRangeRecordIterator, GenomicRangeRecordUnwrappable, TsvSerialize};
+use crate::traits::{
+    GeneralRangeRecordIterator, GenomicRangeRecordUnwrappable, Selection, TsvSerialize,
+};
 use crate::Position;
+
+use super::tsv::TsvConfig;
+
+// FEATURE/TODO: hints? if not performance cost
+// use lazy_static::lazy_static;
+//lazy_static! {
+//    static ref POSITION_HINT: Option<String> = Some("Check that the start position column is a valid integer.".to_string());
+//}
 
 /// Get the *base* extension to help infer filetype, which ignores compression-related
 /// extensions (`.gz` and `.bgz`).
@@ -405,7 +416,8 @@ pub enum Strand {
 }
 
 impl TsvSerialize for Option<Strand> {
-    fn to_tsv(&self) -> String {
+    #![allow(unused_variables)]
+    fn to_tsv(&self, config: &TsvConfig) -> String {
         match self {
             Some(Strand::Forward) => "+".to_string(),
             Some(Strand::Reverse) => "-".to_string(),
@@ -421,6 +433,30 @@ pub struct Bed5Addition {
     pub score: f64,
 }
 
+impl Selection for &Bed5Addition {
+    fn select_by_name(&self, name: &str) -> DatumType {
+        match name {
+            "name" => DatumType::String(self.name.clone()),
+            "score" => DatumType::Float64(self.score),
+            _ => panic!("No item named '{}'", name),
+        }
+    }
+}
+
+impl TsvSerialize for &Bed5Addition {
+    #![allow(unused_variables)]
+    fn to_tsv(&self, config: &TsvConfig) -> String {
+        format!("{}\t{}", self.name, self.score)
+    }
+}
+
+impl TsvSerialize for Bed5Addition {
+    #![allow(unused_variables)]
+    fn to_tsv(&self, config: &TsvConfig) -> String {
+        format!("{}\t{}", self.name, self.score)
+    }
+}
+
 /// The additional three BED6 columns.
 // TODO: not connectted yet
 #[derive(Clone, Debug)]
@@ -428,18 +464,6 @@ pub struct Bed6Addition {
     pub name: String,
     pub score: f64,
     pub strand: Option<Strand>,
-}
-
-impl TsvSerialize for &Bed5Addition {
-    fn to_tsv(&self) -> String {
-        format!("{}\t{}", self.name, self.score)
-    }
-}
-
-impl TsvSerialize for Bed5Addition {
-    fn to_tsv(&self) -> String {
-        format!("{}\t{}", self.name, self.score)
-    }
 }
 
 /// A lazy parser for BED5 files. This parses the first three range columns, the feature name,
@@ -793,10 +817,13 @@ pub fn parse_column<T: std::str::FromStr>(column: &str, line: &str) -> Result<T,
 where
     <T as std::str::FromStr>::Err: std::fmt::Debug,
 {
-    // NOTE: this is used a lot, and should be benchmarked.
     column
         .parse::<T>()
-        .map_err(|_| GRangesError::InvalidColumnType(format!("column '{}' in '{}'", column, line)))
+        .map_err(|_| GRangesError::InvalidColumnType {
+            expected_type: std::any::type_name::<T>().to_string(), // Provides the expected type name
+            found_value: column.to_string(),
+            line: line.to_string(),
+        })
 }
 
 /// Parses a BED-like TSV format line into its constituent components.
@@ -816,7 +843,11 @@ where
 pub fn parse_bedlike(line: &str) -> Result<(String, Position, Position, Vec<&str>), GRangesError> {
     let columns: Vec<&str> = line.split('\t').collect();
     if columns.len() < 3 {
-        return Err(GRangesError::BedlikeTooFewColumns(line.to_string()));
+        return Err(GRangesError::BedTooFewColumns(
+            columns.len(),
+            3,
+            line.to_string(),
+        ));
     }
 
     let seqname = parse_column(columns[0], line)?;
@@ -837,7 +868,10 @@ pub fn parse_bedlike(line: &str) -> Result<(String, Position, Position, Vec<&str
 pub fn parse_bed_lazy(line: &str) -> Result<GenomicRangeRecord<Option<String>>, GRangesError> {
     let columns: Vec<&str> = line.splitn(4, '\t').collect();
     if columns.len() < 3 {
-        return Err(GRangesError::BedlikeTooFewColumns(line.to_string()));
+        return Err(GRangesError::Bed3TooFewColumns(
+            columns.len(),
+            line.to_string(),
+        ));
     }
 
     let seqname = parse_column(columns[0], line)?;
@@ -863,7 +897,10 @@ pub fn parse_bed_lazy(line: &str) -> Result<GenomicRangeRecord<Option<String>>, 
 pub fn parse_bed3(line: &str) -> Result<GenomicRangeEmptyRecord, GRangesError> {
     let columns: Vec<&str> = line.splitn(4, '\t').collect();
     if columns.len() < 3 {
-        return Err(GRangesError::BedlikeTooFewColumns(line.to_string()));
+        return Err(GRangesError::Bed3TooFewColumns(
+            columns.len(),
+            line.to_string(),
+        ));
     }
 
     let seqname = parse_column(columns[0], line)?;
@@ -877,6 +914,7 @@ pub fn parse_bed3(line: &str) -> Result<GenomicRangeEmptyRecord, GRangesError> {
     })
 }
 
+#[allow(dead_code)]
 fn parse_strand(symbol: char) -> Result<Option<Strand>, GRangesError> {
     match symbol {
         '+' => Ok(Some(Strand::Forward)),
@@ -890,9 +928,13 @@ fn parse_strand(symbol: char) -> Result<Option<Strand>, GRangesError> {
 /// columns
 ///
 pub fn parse_bed5(line: &str) -> Result<GenomicRangeRecord<Bed5Addition>, GRangesError> {
-    let columns: Vec<&str> = line.splitn(4, '\t').collect();
-    if columns.len() < 3 {
-        return Err(GRangesError::BedlikeTooFewColumns(line.to_string()));
+    let columns: Vec<&str> = line.splitn(6, '\t').collect();
+    if columns.len() < 5 {
+        return Err(GRangesError::BedTooFewColumns(
+            columns.len(),
+            5,
+            line.to_string(),
+        ));
     }
 
     let seqname = parse_column(columns[0], line)?;
@@ -900,7 +942,7 @@ pub fn parse_bed5(line: &str) -> Result<GenomicRangeRecord<Bed5Addition>, GRange
     let end: Position = parse_column(columns[2], line)?;
 
     let name = parse_column(columns[3], line)?;
-    let score: f64 = parse_column(columns[3], line)?;
+    let score: f64 = parse_column(columns[4], line)?;
 
     let data = Bed5Addition { name, score };
 

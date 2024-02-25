@@ -6,6 +6,7 @@ use std::ops::Range;
 
 use crate::{
     error::GRangesError,
+    io::tsv::TsvConfig,
     traits::{
         AdjustableGenericRange, GenericRange, GenericRangeOperations, IndexedDataContainer,
         TsvSerialize,
@@ -241,7 +242,8 @@ impl<U: Clone> GenericRangeOperations for GenomicRangeRecord<U> {
 }
 
 impl TsvSerialize for GenomicRangeRecord<()> {
-    fn to_tsv(&self) -> String {
+    #[allow(unused_variables)]
+    fn to_tsv(&self, config: &TsvConfig) -> String {
         format!("{}\t{}\t{}", self.seqname, self.start, self.end)
     }
 }
@@ -274,13 +276,14 @@ impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<U> {
     /// intentional, since one common use case is when `U` is an [`Option<String>`],
     /// which is the type combination commonly used in lazy parsing. In this case,
     /// when the data is `None`, that indicates no more columns.
-    fn to_tsv(&self) -> String {
+    #[allow(unused_variables)]
+    fn to_tsv(&self, config: &TsvConfig) -> String {
         format!(
-            "{}\t{}\t{}{}",
+            "{}\t{}\t{}\t{}",
             self.seqname,
             self.start,
             self.end,
-            self.data.to_tsv()
+            self.data.to_tsv(config)
         )
     }
 }
@@ -357,7 +360,8 @@ impl GenericRangeOperations for GenomicRangeEmptyRecord {
 }
 
 impl TsvSerialize for GenomicRangeEmptyRecord {
-    fn to_tsv(&self) -> String {
+    #[allow(unused_variables)]
+    fn to_tsv(&self, config: &TsvConfig) -> String {
         format!("{}\t{}\t{}", self.seqname, self.start, self.end)
     }
 }

@@ -2,9 +2,10 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use granges::{
-    commands::{granges_adjust, granges_filter, granges_flank, ProcessingMode},
+    commands::{granges_adjust, granges_filter, granges_flank, granges_map, ProcessingMode},
+    data::operations::Operation,
     prelude::GRangesError,
-    Position, PositionOffset, data::operations::{match_operation, Operation},
+    Position, PositionOffset,
 };
 
 #[cfg(feature = "dev-commands")]
@@ -78,7 +79,7 @@ enum Commands {
 
         /// Skip ranges from sequences (e.g. chromosomes) not present in the genome file.
         /// By default, ranges with sequence names not in the genome file will raise an error.
-        #[arg(short = 'f', long)]
+        #[arg(short, long)]
         skip_missing: bool,
     },
     Flank {
@@ -108,7 +109,7 @@ enum Commands {
 
         /// Skip ranges from sequences (e.g. chromosomes) not present in the genome file.
         /// By default, ranges with sequence names not in the genome file will raise an error.
-        #[arg(short = 'f', long)]
+        #[arg(long)]
         skip_missing: bool,
 
         /// Processing mode
@@ -128,9 +129,9 @@ enum Commands {
         #[arg(short, long, required = true)]
         right: PathBuf,
 
-        /// Operation 
-        #[clap(short, long, value_parser = clap::value_parser!(Operation), multiple_occurrences(true))]
-        operation: Vec<Operation>,
+        /// Operation
+        #[clap(short, long, value_parser = clap::value_parser!(Operation), use_value_delimiter = true, value_delimiter = ',')]
+        func: Vec<Operation>,
 
         /// An optional output file (standard output will be used if not specified)
         #[arg(short, long)]
@@ -138,12 +139,8 @@ enum Commands {
 
         /// Skip ranges from sequences (e.g. chromosomes) not present in the genome file.
         /// By default, ranges with sequence names not in the genome file will raise an error.
-        #[arg(short = 'f', long)]
+        #[arg(short, long)]
         skip_missing: bool,
-
-        /// Processing mode
-        #[arg(long)]
-        in_mem: bool,
     },
     #[cfg(feature = "dev-commands")]
     RandomBed {
@@ -227,11 +224,21 @@ fn run() -> Result<(), GRangesError> {
             genome,
             left,
             right,
-            operation,
+            func,
             output,
             skip_missing,
-            in_mem,
         }) => {
+            if func.is_empty() {
+                return Err(GRangesError::NoOperationSpecified);
+            }
+            granges_map(
+                genome,
+                left,
+                right,
+                func.to_vec(),
+                output.as_ref(),
+                *skip_missing,
+            )
         }
 
         #[cfg(feature = "dev-commands")]

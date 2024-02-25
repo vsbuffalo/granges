@@ -212,10 +212,12 @@ impl LazyNucleotideSequences {
             .index()
             .iter()
             .filter_map(|r| {
-                let name = String::from_utf8(r.name().to_vec()).expect(&format!(
-                    "{}\nError in converting FASTA name to a UTF8 String.",
-                    &INTERNAL_ERROR_MESSAGE
-                ));
+                let name = String::from_utf8(r.name().to_vec()).unwrap_or_else(|_| {
+                    panic!(
+                        "{}\nError in converting FASTA name to a UTF8 String.",
+                        &INTERNAL_ERROR_MESSAGE
+                    )
+                });
                 if allowed_seqnames
                     .as_ref()
                     .map_or(true, |seqnames| seqnames.contains(&name))

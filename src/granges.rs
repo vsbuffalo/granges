@@ -85,7 +85,7 @@ use indexmap::IndexMap;
 
 use crate::{
     ensure_eq,
-    io::OutputStream,
+    io::{tsv::TsvConfig, OutputStream},
     iterators::GRangesIterator,
     join::{
         CombinedJoinData, CombinedJoinDataBothEmpty, CombinedJoinDataLeftEmpty,
@@ -225,7 +225,11 @@ where
     <T as IndexedDataContainer>::Item<'a>: TsvSerialize,
 {
     /// Write
-    fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError> {
+    fn to_tsv(
+        &'a self,
+        output: Option<impl Into<PathBuf>>,
+        config: &TsvConfig,
+    ) -> Result<(), GRangesError> {
         // output stream -- header is None for now (TODO)
         let output = output.map_or(OutputStream::new_stdout(None), |file| {
             OutputStream::new(file, None)
@@ -236,7 +240,7 @@ where
         let seqnames = self.seqnames();
         for range in self.iter_ranges() {
             let record = range.to_record(&seqnames, data_ref);
-            writeln!(writer, "{}", record.to_tsv())?;
+            writeln!(writer, "{}", record.to_tsv(config))?;
         }
         Ok(())
     }
@@ -244,7 +248,11 @@ where
 
 impl<'a, R: IterableRangeContainer> GenomicRangesTsvSerialize<'a, R> for GRangesEmpty<R> {
     /// Output a BED3 file for for this data-less [`GRanges<R, ()>`].
-    fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError> {
+    fn to_tsv(
+        &'a self,
+        output: Option<impl Into<PathBuf>>,
+        config: &TsvConfig,
+    ) -> Result<(), GRangesError> {
         // output stream -- header is None for now (TODO)
         let output = output.map_or(OutputStream::new_stdout(None), |file| {
             OutputStream::new(file, None)
@@ -254,7 +262,7 @@ impl<'a, R: IterableRangeContainer> GenomicRangesTsvSerialize<'a, R> for GRanges
         let seqnames = self.seqnames();
         for range in self.0.iter_ranges() {
             let record = range.to_record_empty::<()>(&seqnames);
-            writeln!(writer, "{}", record.to_tsv())?;
+            writeln!(writer, "{}", record.to_tsv(config))?;
         }
         Ok(())
     }
@@ -517,17 +525,20 @@ impl<U> GRanges<VecRangesIndexed, Vec<U>> {
     }
 }
 
-
-impl<C, U> GRanges<C, Vec<U>> 
-where C: RangeContainer {
-    /// Consume this [`GRanges<C, Vec<U>>`] object, applying `func` to all elements 
+impl<C, U> GRanges<C, Vec<U>>
+where
+    C: RangeContainer,
+{
+    /// Consume this [`GRanges<C, Vec<U>>`] object, applying `func` to all elements
     /// in [`Vec<U>`], to return a new [`GRanges<C, Vec<V>>`].
     ///
-    pub fn map_data<F, V>(mut self, func: F) -> Result<GRanges<C, Vec<V>>, GRangesError> 
-    where F: Fn(U) -> V {
+    pub fn map_data<F, V>(mut self, func: F) -> Result<GRanges<C, Vec<V>>, GRangesError>
+    where
+        F: Fn(U) -> V,
+    {
         let left_data = self.take_data()?;
         let transformed_data = left_data.into_iter().map(func).collect();
-        Ok(GRanges { 
+        Ok(GRanges {
             ranges: self.ranges,
             data: Some(transformed_data),
         })
@@ -573,33 +584,34 @@ impl<'a, DL, DR> GRanges<VecRangesIndexed, JoinData<'a, DL, DR>> {
     }
 }
 
-impl<'a, T> GRanges<VecRanges<RangeIndexed>, T>
-where
-    T: IndexedDataContainer + 'a,
-    T: TsvSerialize,
-    <T as IndexedDataContainer>::Item<'a>: TsvSerialize,
-{
-    /// Write this [`GRanges<VecRanges, T>`] object to a TSV file, using the
-    /// [`TsvSerialize`] trait methods defiend for the items in `T`.
-    pub fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError> {
-        // output stream -- header is None for now (TODO)
-        let output = output.map_or(OutputStream::new_stdout(None), |file| {
-            OutputStream::new(file, None)
-        });
-        let mut writer = output.writer()?;
-
-        let seqnames = self.seqnames();
-        let data_ref = self.data.as_ref().ok_or(GRangesError::NoDataContainer)?;
-        for range in self.iter_ranges() {
-            let record = range.to_record(&seqnames, data_ref);
-            writeln!(writer, "{}", record.to_tsv())?;
-        }
-        Ok(())
-    }
-}
+//impl<'a, T> GRanges<VecRanges<RangeIndexed>, T>
+//where
+//    T: IndexedDataContainer + 'a,
+//    T: TsvSerialize,
+//    <T as IndexedDataContainer>::Item<'a>: TsvSerialize,
+//{
+//    /// Write this [`GRanges<VecRanges, T>`] object to a TSV file, using the
+//    /// [`TsvSerialize`] trait methods defined for the items in `T`.
+//    pub fn to_tsv(&'a self, output: Option<impl Into<PathBuf>>) -> Result<(), GRangesError> {
+//        // output stream -- header is None for now (TODO)
+//        let output = output.map_or(OutputStream::new_stdout(None), |file| {
+//            OutputStream::new(file, None)
+//        });
+//        let mut writer = output.writer()?;
+//
+//        let seqnames = self.seqnames();
+//        let data_ref = self.data.as_ref().ok_or(GRangesError::NoDataContainer)?;
+//        for range in self.iter_ranges() {
+//            let record = range.to_record(&seqnames, data_ref);
+//            writeln!(writer, "{}", record.to_tsv())?;
+//        }
+//        Ok(())
+//    }
+//}
 
 /// [`GRanges::left_overlaps()`] for the left with data, right with data case.
-impl<'a, DL: 'a, DR: 'a> LeftOverlaps<'a, GRanges<COITreesIndexed, DR>> for GRanges<VecRangesIndexed, DL>
+impl<'a, DL: 'a, DR: 'a> LeftOverlaps<'a, GRanges<COITreesIndexed, DR>>
+    for GRanges<VecRangesIndexed, DL>
 where
     DL: IndexedDataContainer + 'a,
     DR: IndexedDataContainer + 'a,
@@ -609,7 +621,7 @@ where
     /// Conduct a left overlap join, consuming self and returning a new
     /// [`GRanges<VecRangesIndexed, JoinData>`].
     ///
-    /// The [`JoinData`] container contains the owned left data container and has 
+    /// The [`JoinData`] container contains the owned left data container and has
     /// a reference to the right data container, as as well as a [`Vec<LeftGroupedJoin`]
     /// that contains information about each overlap between a left and zero or more right
     /// ranges.
@@ -651,7 +663,7 @@ where
     /// Conduct a left overlap join, consuming self and returning a new
     /// [`GRanges<VecRangesIndexed, JoinDataRightEmpty>`].
     ///
-    /// The [`JoinData`] container contains the left data container and has 
+    /// The [`JoinData`] container contains the left data container and has
     /// a reference to the right data container, as as well as a [`Vec<LeftGroupedJoin`]
     /// that contains information about each overlap between a left and zero or more right
     /// ranges.
@@ -679,6 +691,7 @@ where
             }
         }
 
+        // get the join data out, to transform it to a more informative type
         let join_data = gr.take_data()?;
         let data = JoinDataRightEmpty {
             joins: join_data.joins,
@@ -695,7 +708,7 @@ where
 /// [`GRanges::left_overlaps()`] for the left empty, right with data case.
 impl<'a, C, DR: 'a> LeftOverlaps<'a, GRanges<COITreesIndexed, DR>> for GRangesEmpty<C>
 where
-    C: RangeContainer,
+    C: IterableRangeContainer,
     DR: IndexedDataContainer + 'a,
 {
     type Output = GRanges<VecRanges<RangeIndexed>, JoinDataLeftEmpty<'a, DR>>;
@@ -703,7 +716,7 @@ where
     /// Conduct a left overlap join, consuming self and returning a new
     /// [`GRanges<VecRangesIndexed, JoinDataLeftEmpty>`].
     ///
-    /// The [`JoinDataLeftEmpty`] contains no left data, and a reference to the 
+    /// The [`JoinDataLeftEmpty`] contains no left data, and a reference to the
     /// right data container, as as well as a [`Vec<LeftGroupedJoin`]
     /// that contains information about each overlap between a left and zero or more right
     /// ranges.
@@ -717,10 +730,24 @@ where
         let right_data = right.data.as_ref().ok_or(GRangesError::NoDataContainer)?;
         gr.data = Some(JoinData::new((), right_data));
 
-        // Since there's no left data, we don't perform any joins but still need to handle the structure
+        for (seqname, left_ranges) in self.0.ranges.iter() {
+            for left_range in left_ranges.iter_ranges() {
+                // Left join: every left range gets a JoinData.
+                let mut join_data = LeftGroupedJoin::new(&left_range);
+                if let Some(right_ranges) = right.ranges.get(seqname) {
+                    right_ranges.query(left_range.start(), left_range.end(), |right_range| {
+                        // NOTE: right_range is a coitrees::IntervalNode.
+                        join_data.add_right(&left_range, right_range);
+                    });
+                }
+                gr.push_range_with_join(seqname, left_range.start(), left_range.end(), join_data)?;
+            }
+        }
+
+        // get the join data out, to transform it to a more informative type
         let join_data = gr.take_data()?;
         let data = JoinDataLeftEmpty {
-            joins: Vec::new(), // No joins since there's no left data
+            joins: join_data.joins,
             right_data: join_data.right_data,
         };
         let ranges = gr.ranges;
@@ -745,13 +772,29 @@ impl<'a> LeftOverlaps<'a, GRangesEmpty<COITreesEmpty>> for GRangesEmpty<COITrees
     /// of overlapping basepairs, the overlap fraction, etc.
     fn left_overlaps(
         self,
-        _right: &'a GRangesEmpty<COITreesEmpty>,
+        right: &'a GRangesEmpty<COITreesEmpty>,
     ) -> Result<Self::Output, GRangesError> {
-        let gr: GRanges<VecRangesIndexed, JoinData<(), ()>> = GRanges::new_vec(&self.0.seqlens());
+        let mut gr: GRanges<VecRangesIndexed, JoinData<(), ()>> =
+            GRanges::new_vec(&self.0.seqlens());
 
-        // Since there's no data on either side, we essentially return an empty structure
+        for (seqname, left_ranges) in self.0.ranges.iter() {
+            for left_range in left_ranges.iter_ranges() {
+                // Left join: every left range gets a JoinData.
+                let mut join_data = LeftGroupedJoin::new(&left_range);
+                if let Some(right_ranges) = right.0.ranges.get(seqname) {
+                    right_ranges.query(left_range.start(), left_range.end(), |right_range| {
+                        // NOTE: right_range is a coitrees::IntervalNode.
+                        join_data.add_right(&left_range, right_range);
+                    });
+                }
+                gr.push_range_with_join(seqname, left_range.start(), left_range.end(), join_data)?;
+            }
+        }
+
+        // get the join data out, to transform it to a more informative type
+        let join_data = gr.take_data()?;
         let data = JoinDataBothEmpty {
-            joins: Vec::new(), // No joins possible without data
+            joins: join_data.joins,
         };
         let ranges = gr.ranges;
         Ok(GRanges {
@@ -775,7 +818,7 @@ where
     /// e.g. a median `f64` value, a `String` of all overlap right ranges' values concatenated,
     /// etc.
     ///
-    /// # Arugments 
+    /// # Arugments
     /// * `func`: a function that takes a [`CombinedJoinData`] (which contains
     ///           the associated data for the left range and overlapping right ranges)
     ///           and summarizes it into a new type `V`.
@@ -815,7 +858,7 @@ impl GRanges<VecRangesIndexed, JoinDataBothEmpty> {
     /// e.g. a median `f64` value, a `String` of all overlap right ranges' values concatenated,
     /// etc.
     ///
-    /// # Arugments 
+    /// # Arugments
     /// * `func`: a function that takes a [`CombinedJoinDataLeftEmpty`] (which contains
     ///           the associated data for the left range and overlapping right ranges)
     ///           and summarizes it into a new type `V`.
@@ -854,7 +897,7 @@ where
     /// e.g. a median `f64` value, a `String` of all overlap right ranges' values concatenated,
     /// etc.
     ///
-    /// # Arugments 
+    /// # Arugments
     /// * `func`: a function that takes a [`CombinedJoinDataRightEmpty`] (which contains
     ///           the associated data for the left range and overlapping right ranges)
     ///           and summarizes it into a new type `V`.
@@ -892,7 +935,7 @@ where
     /// e.g. a median `f64` value, a `String` of all overlap right ranges' values concatenated,
     /// etc.
     ///
-    /// # Arugments 
+    /// # Arugments
     /// * `func`: a function that takes a [`CombinedJoinDataLeftEmpty`] (which contains
     ///           the associated data for the left range and overlapping right ranges)
     ///           and summarizes it into a new type `V`.
@@ -918,7 +961,7 @@ where
     }
 }
 
-impl<'a, C, T> GRanges<C, T>
+impl<C, T> GRanges<C, T>
 where
     T: IndexedDataContainer,
 {
@@ -1391,15 +1434,14 @@ mod tests {
         // get join data
         let data = joined_results.data.unwrap();
 
-        // TODO fix
         // check is left join
-        //assert_eq!(data.len(), windows_len);
+        assert_eq!(data.len(), windows_len);
 
-        //let mut join_iter = data.iter();
-        //assert_eq!(join_iter.next().unwrap().num_overlaps(), 2);
-        //assert_eq!(join_iter.next().unwrap().num_overlaps(), 0);
-        //assert_eq!(join_iter.next().unwrap().num_overlaps(), 2);
-        //assert_eq!(join_iter.next().unwrap().num_overlaps(), 1);
+        let mut join_iter = data.iter();
+        assert_eq!(join_iter.next().unwrap().num_overlaps(), 2);
+        assert_eq!(join_iter.next().unwrap().num_overlaps(), 0);
+        assert_eq!(join_iter.next().unwrap().num_overlaps(), 2);
+        assert_eq!(join_iter.next().unwrap().num_overlaps(), 1);
         // rest are empty TODO should check
     }
 
@@ -1417,6 +1459,7 @@ mod tests {
         right_gr.push_range("chr1", 23, 24, 2.9).unwrap();
         let right_gr = right_gr.into_coitrees().unwrap();
 
+        // TODO
         let joined_results = windows.left_overlaps(&right_gr).unwrap();
         // joined_results.apply_over_joins();
     }
