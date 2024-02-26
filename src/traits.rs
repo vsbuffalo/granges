@@ -89,11 +89,12 @@ pub trait GenericRange: Clone {
 
 /// The [`JoinDataOperations`] trait unifies common operations
 /// over combined join data types ([`CombinedJoinData`],
-/// CombinedJoinDataBothEmpty`], etc).
+/// [`CombinedJoinDataBothEmpty`], etc).
 ///
 ///
-/// [`CombinedJoinData`] crate::granges::join::CombinedJoinData
-/// [`CombinedJoinDataBothEmpty`] crate::granges::join::CombinedJoinDataBothEmpty
+/// [`JoinDataOperations`]: crate::traits::JoinDataOperations
+/// [`CombinedJoinData`]: crate::join::CombinedJoinData
+/// [`CombinedJoinDataBothEmpty`]: crate::join::CombinedJoinDataBothEmpty
 pub trait JoinDataOperations<DL, DR> {
     type LeftDataElementType;
     type RightDataElementType;
@@ -209,10 +210,9 @@ pub trait IntoIterableRangesContainer<R> {
 ///
 /// GRanges provides [`IndexedDataContainer`] trait implementations for:
 ///
-///  - [`ndarray::Array1`]
-///  - [`ndarray::Array2`]
-///  - [`Vec`]
-///  - [`polars::DataFrame`]
+///  - [`Vec`], this is the most common and general data container.
+///  - [ndarray](https://docs.rs/ndarray/latest/ndarray/index.html) `Array1` and `Array2`, if `--features=ndarray` is set.
+///  - [polars](https://pola.rs) datafames.
 ///
 /// # Panics
 /// This will panic if `DataContainer.get_value()` tries to access

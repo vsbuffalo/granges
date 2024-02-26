@@ -70,35 +70,6 @@
 //! iterator types defined in [`GenomicRangesParser`]. The best examples of this are the
 //! `granges` subcommands implementations.
 //!
-//! ## File Format Terminology
-//!
-//!  - BED3
-//!  - BED*
-//!  - BED-like
-//!
-//!
-//! : it could be ranges-only (i.e. a BED3), or contain data (e.g. BED5). The lazy BED parser will
-//! output a [`GenomicRangeRecord<Option<String>>`], where the data would be `None` only in the
-//! case that three columns were encountered in the file (which must be a BED3).
-//!
-//! In GRanges, there are two types of ranges: ranges with an index to an element in the data
-//! container, and ranges without indices (i.e. what we would use in the case of processing a BED3
-//! file). Since a [`GRanges`] object needs to have a single, concrete range type in its range
-//! containers, it must be known *at compile time* how one should convert the
-//!
-//! Downstream pipelines must immediately determine how to handle whether there is additional data,
-//! or all of the [`GenomicRangeRecord`] entries are `None`, and
-//!
-//!
-//! # BED-like File Parser Design
-//!
-//! All BED formats (BED3, BED5, etc) are built upon a BED3. Often when working with these types
-//! of formats, many operations do not immediately require full parsing of the line, past the
-//! *range components*. This is because downstream operations may immediately filter away entries
-//! (e.g. based on width), or do an overlap operation, and then filter away entries based on some
-//! overlap criteria. Either way, it may be advantageous to work with ranges that just store some
-//! generic data.
-//!
 //! [`GRanges`]: crate::granges::GRanges
 //! [`GRanges<R, T>`]: crate::granges::GRanges
 //! [`GRangesEmpty`]: crate::granges::GRangesEmpty

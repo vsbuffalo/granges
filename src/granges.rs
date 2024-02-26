@@ -632,7 +632,7 @@ where
     /// [`GRanges<VecRangesIndexed, JoinData>`].
     ///
     /// The [`JoinData`] container contains the owned left data container and has
-    /// a reference to the right data container, as as well as a [`Vec<LeftGroupedJoin`]
+    /// a reference to the right data container, as as well as a [`Vec<LeftGroupedJoin>`]
     /// that contains information about each overlap between a left and zero or more right
     /// ranges.
     fn left_overlaps(
@@ -674,7 +674,7 @@ where
     /// [`GRanges<VecRangesIndexed, JoinDataRightEmpty>`].
     ///
     /// The [`JoinData`] container contains the left data container and has
-    /// a reference to the right data container, as as well as a [`Vec<LeftGroupedJoin`]
+    /// a reference to the right data container, as as well as a [`Vec<LeftGroupedJoin>`]
     /// that contains information about each overlap between a left and zero or more right
     /// ranges.
     fn left_overlaps(
@@ -726,7 +726,7 @@ where
     /// [`GRanges<VecRangesIndexed, JoinDataLeftEmpty>`].
     ///
     /// The [`JoinDataLeftEmpty`] contains no left data, and a reference to the
-    /// right data container, as as well as a [`Vec<LeftGroupedJoin`]
+    /// right data container, as as well as a [`Vec<LeftGroupedJoin>`]
     /// that contains information about each overlap between a left and zero or more right
     /// ranges.
     fn left_overlaps(
@@ -778,7 +778,7 @@ where
     /// [`GRanges<VecRangesIndexed, JoinDataBothEmpty>`].
     ///
     /// The [`JoinDataBothEmpty`] contains no data, since neither left of right
-    /// [`GRanges`] objects had data. However, it does contain a [`Vec<LeftGroupedJoin`],
+    /// [`GRanges`] objects had data. However, it does contain a [`Vec<LeftGroupedJoin>`],
     /// and each [`LeftGroupedJoin`] contains information about the number of overlapping
     /// ranges and their lengths. This can be used to summarize, e.g. the number
     /// of overlapping basepairs, the overlap fraction, etc.

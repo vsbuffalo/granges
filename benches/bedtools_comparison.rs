@@ -18,7 +18,7 @@ fn bench_range_adjustment(c: &mut Criterion) {
     let input_bedfile = random_bed3file(BED_LENGTH);
 
     // configure the sample size for the group
-    // group.sample_size(10);
+    group.sample_size(10);
 
     // bedtools slop
     group.bench_function("bedtools_slop", |b| {
@@ -145,10 +145,54 @@ fn bench_flank(c: &mut Criterion) {
     });
 }
 
+fn bench_windows(c: &mut Criterion) {
+    let width = 100_000;
+    let step = 1_000;
+
+    // create the benchmark group
+    let mut group = c.benchmark_group("windows");
+
+    // configure the sample size for the group
+    // group.sample_size(10);
+    group.bench_function("bedtools_makewindows", |b| {
+        b.iter(|| {
+            let bedtools_output = Command::new("bedtools")
+                .arg("makewindows")
+                .arg("-g")
+                .arg("tests_data/hg38_seqlens.tsv")
+                .arg("-w")
+                .arg(width.to_string())
+                .arg("-s")
+                .arg(step.to_string())
+                .output()
+                .expect("bedtools makewindows failed");
+            assert!(bedtools_output.status.success());
+        });
+    });
+
+    group.bench_function("granges_windows", |b| {
+        b.iter(|| {
+            let granges_output = Command::new(granges_binary_path())
+                .arg("windows")
+                .arg("--genome")
+                .arg("tests_data/hg38_seqlens.tsv")
+                .arg("--width")
+                .arg(width.to_string())
+                .arg("--step")
+                .arg(step.to_string())
+                .output()
+                .expect("granges windows failed");
+            assert!(granges_output.status.success());
+        });
+    });
+}
+
+
 criterion_group!(
     benches,
     bench_filter_adjustment,
     bench_range_adjustment,
     bench_flank,
-);
+    bench_windows,
+    );
 criterion_main!(benches);
