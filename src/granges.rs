@@ -33,47 +33,6 @@
 //! will have associated data or not. The special [`GRangesEmpty`] type represents (and wraps)
 //! [`GRanges<R, T>`] objects that do not have data.
 //!
-//!
-//!
-//!
-//! TODO
-//!
-//! **High-level data types**: A key feature of GRanges design is that a single type of ranges are
-//! contained in the range containers. By knowing that every range in a range container either has
-//! an index to a data element in the data container or it does not ahead of time simplifies
-//! downstream ergonomics tremendously.
-//!
-//! **Emphasis on compile-time**: For this, let's consider a common problem: a bioinformatics tool
-//! needs to read in a BED-like file that has a variable, unknown at compile time, number of
-//! columns.
-//!
-//! This is an important concept when working with [`GRanges<R, T>`] types:
-//!
-//! **High-level data types**: A key feature of GRanges design is that a single type of ranges are
-//! contained in the range containers. By knowing that every range in a range container either has
-//! an index to a data element in the data container or it does not ahead of time simplifies
-//! downstream ergonomics tremendously.
-//!
-//! **Emphasis on compile-time**: For this, let's consider a common problem: a bioinformatics tool
-//! needs to read in a BED-like file that has a variable, unknown at compile time, number of
-//! columns.
-//!
-//! In Rust, this could be handled in one of two ways. First, it could be handled at *runtime*, by
-//! leveraging Rust's dynamic trait system. For example, imagine loading in one of two possible BED
-//! formats:
-//!
-//!  1. *Data-less BED3*: The appropriate `GRanges` object here would be a `GRanges<VecRangesEmpty,
-//!     ()>`.
-//!
-//!  2. *BED-like with data*: Here, we'd need a `GRanges<VecRangesIndexed, Vec<U>>`, where the
-//!     `Vec<U>` is data container containing just-loaded-in data.
-//!
-//! Suppose your code doesn't know, when you're writing it, which of these two cases it will
-//! encounter.
-//!
-//! Because at compile-time, the types *need* to be known, there are a few options here.
-//!
-//!
 //! [`Bed3Iterator`]: crate::io::parsers::Bed3Iterator
 //! [`BedlikeIterator`]: crate::io::parsers::BedlikeIterator
 //! [`GRanges::into_coitrees`]: crate::granges::GRanges::into_coitrees
@@ -215,6 +174,9 @@ where
     // reduce Results a lot.
     pub fn take_data(&mut self) -> Result<T, GRangesError> {
         std::mem::take(&mut self.data).ok_or(GRangesError::NoDataContainer)
+    }
+    pub fn take_ranges(&mut self) -> GenomeMap<C> {
+        std::mem::take(&mut self.ranges)
     }
 }
 
@@ -383,6 +345,12 @@ impl<R: GenericRange> GRangesEmpty<VecRanges<R>> {
 
     pub fn shink(&mut self) {
         todo!()
+    }
+}
+
+impl<C> GRangesEmpty<C> {
+    pub fn take_ranges(&mut self) -> GenomeMap<C> {
+        std::mem::take(&mut self.0.ranges)
     }
 }
 

@@ -187,12 +187,11 @@ fn bench_windows(c: &mut Criterion) {
     });
 }
 
-
 criterion_group!(
     benches,
     bench_filter_adjustment,
     bench_range_adjustment,
     bench_flank,
     bench_windows,
-    );
+);
 criterion_main!(benches);

@@ -77,7 +77,7 @@ impl Operation {
                     .iter()
                     .map(|num| num.to_string())
                     .collect::<Vec<_>>()
-                    .join(", ");
+                    .join(",");
                 DatumType::String(collapsed)
             }
         }

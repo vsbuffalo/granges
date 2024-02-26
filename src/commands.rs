@@ -455,7 +455,7 @@ pub fn granges_map(
     // Process all the overlaps.
     let result_gr = left_join_gr.map_over_joins(|join_data| {
         // Get the "right data" -- the BED5 scores.
-        let overlap_scores = join_data.right_data;
+        let overlap_scores: Vec<f64> = join_data.right_data.into_iter().filter_map(|x| x).collect();
 
         // Run all operations on the scores.
         operations

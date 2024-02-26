@@ -79,17 +79,16 @@ use std::collections::HashSet;
 use std::io::{BufRead, BufReader};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
-use crate::data::DatumType;
 use crate::error::GRangesError;
 use crate::io::file::InputStream;
 use crate::ranges::{GenomicRangeEmptyRecord, GenomicRangeRecord};
-use crate::traits::{
-    GeneralRangeRecordIterator, GenomicRangeRecordUnwrappable, Selection, TsvSerialize,
-};
+use crate::traits::{GeneralRangeRecordIterator, GenomicRangeRecordUnwrappable, TsvSerialize};
 use crate::Position;
 
 use super::tsv::TsvConfig;
+use super::BED_TSV;
 
 // FEATURE/TODO: hints? if not performance cost
 // use lazy_static::lazy_static;
@@ -405,30 +404,42 @@ impl TsvSerialize for Option<Strand> {
 #[derive(Clone, Debug)]
 pub struct Bed5Addition {
     pub name: String,
-    pub score: f64,
+    pub score: Option<f64>,
 }
 
-impl Selection for &Bed5Addition {
-    fn select_by_name(&self, name: &str) -> DatumType {
-        match name {
-            "name" => DatumType::String(self.name.clone()),
-            "score" => DatumType::Float64(self.score),
-            _ => panic!("No item named '{}'", name),
-        }
-    }
-}
+//impl Selection for &Bed5Addition {
+//    fn select_by_name(&self, name: &str) -> DatumType {
+//        match name {
+//            "name" => DatumType::String(self.name.clone()),
+//            "score" => DatumType::Float64(self.score),
+//            _ => panic!("No item named '{}'", name),
+//        }
+//    }
+//}
 
 impl TsvSerialize for &Bed5Addition {
     #![allow(unused_variables)]
     fn to_tsv(&self, config: &TsvConfig) -> String {
-        format!("{}\t{}", self.name, self.score)
+        format!(
+            "{}\t{}",
+            self.name,
+            self.score
+                .as_ref()
+                .map_or(config.no_value_string.clone(), |x| x.to_string())
+        )
     }
 }
 
 impl TsvSerialize for Bed5Addition {
     #![allow(unused_variables)]
     fn to_tsv(&self, config: &TsvConfig) -> String {
-        format!("{}\t{}", self.name, self.score)
+        format!(
+            "{}\t{}",
+            self.name,
+            self.score
+                .as_ref()
+                .map_or(config.no_value_string.clone(), |x| x.to_string())
+        )
     }
 }
 
@@ -899,10 +910,34 @@ fn parse_strand(symbol: char) -> Result<Option<Strand>, GRangesError> {
     }
 }
 
+/// Parses a string to an `Option<T>`, where `T` implements `FromStr`.
+/// Returns `None` if the input string is a specified placeholder (e.g., "."),
+/// otherwise attempts to parse the string into `T`.
+///
+/// # Arguments
+///
+/// * `input` - The input string to parse.
+/// * `placeholder` - The placeholder string representing `None`.
+///
+/// # Returns
+///
+/// Returns `Ok(None)` if `input` is equal to `placeholder`, `Ok(Some(value))`
+/// if `input` can be parsed into `T`, or an error if parsing fails.
+pub fn parse_optional<T: FromStr>(input: &str, config: &TsvConfig) -> Result<Option<T>, T::Err> {
+    if input == config.no_value_string {
+        Ok(None)
+    } else {
+        input.parse().map(Some)
+    }
+}
+
 /// Parses a BED5 format line into the three columns defining the range, and additional
 /// columns
 ///
+/// Warning: this currently does *not* properly handle converting the missing data `.`
+/// character to `None` values.
 pub fn parse_bed5(line: &str) -> Result<GenomicRangeRecord<Bed5Addition>, GRangesError> {
+    // TODO FIXME
     let columns: Vec<&str> = line.splitn(6, '\t').collect();
     if columns.len() < 5 {
         return Err(GRangesError::BedTooFewColumns(
@@ -917,7 +952,7 @@ pub fn parse_bed5(line: &str) -> Result<GenomicRangeRecord<Bed5Addition>, GRange
     let end: Position = parse_column(columns[2], line)?;
 
     let name = parse_column(columns[3], line)?;
-    let score: f64 = parse_column(columns[4], line)?;
+    let score: Option<f64> = parse_optional(columns[4], &BED_TSV)?;
 
     let data = Bed5Addition { name, score };
 
@@ -927,6 +962,32 @@ pub fn parse_bed5(line: &str) -> Result<GenomicRangeRecord<Bed5Addition>, GRange
         end,
         data,
     })
+}
+
+// mostly for internal tests
+pub fn parse_record_with_score(
+    line: &str,
+) -> Result<GenomicRangeRecord<Option<f64>>, GRangesError> {
+    // Split the line into columns
+    let columns: Vec<&str> = line.split('\t').collect();
+    if columns.len() < 4 {
+        return Err(GRangesError::BedTooFewColumns(
+            columns.len(),
+            4,
+            line.to_string(),
+        ));
+    }
+
+    // Parse the range columns
+    let seqname: String = parse_column(columns[0], line)?;
+    let start: Position = parse_column(columns[1], line)?;
+    let end: Position = parse_column(columns[2], line)?;
+
+    // Parse the fourth column as Option<f64>
+    let score: Option<f64> = parse_optional(columns[3], &BED_TSV)?;
+
+    // Construct and return the GenomicRangeRecord with score as data
+    Ok(GenomicRangeRecord::new(seqname, start, end, score))
 }
 
 // TODO

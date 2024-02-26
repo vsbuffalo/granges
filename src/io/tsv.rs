@@ -18,15 +18,13 @@ pub struct TsvConfig {
 }
 
 impl TsvSerialize for &String {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
+    fn to_tsv(&self, _config: &TsvConfig) -> String {
         self.to_string()
     }
 }
 
 impl TsvSerialize for String {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
+    fn to_tsv(&self, _config: &TsvConfig) -> String {
         self.to_string()
     }
 }
@@ -57,61 +55,53 @@ impl TsvSerialize for &Vec<DatumType> {
 }
 
 impl TsvSerialize for &f64 {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
+    fn to_tsv(&self, _config: &TsvConfig) -> String {
         // TODO precision from config
         format!("{}", self).to_string()
     }
 }
 
 impl TsvSerialize for f64 {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
+    fn to_tsv(&self, _config: &TsvConfig) -> String {
         // TODO precision from config
         format!("{}", self).to_string()
     }
 }
 
 impl TsvSerialize for &f32 {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
+    fn to_tsv(&self, _config: &TsvConfig) -> String {
         // TODO precision from config
         format!("{}", self).to_string()
     }
 }
 
 impl TsvSerialize for f32 {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
+    fn to_tsv(&self, _config: &TsvConfig) -> String {
         // TODO precision from config
         format!("{}", self).to_string()
     }
 }
 
 impl TsvSerialize for &i64 {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
+    fn to_tsv(&self, _config: &TsvConfig) -> String {
         format!("{}", self).to_string()
     }
 }
 
 impl TsvSerialize for i64 {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
+    fn to_tsv(&self, _config: &TsvConfig) -> String {
         format!("{}", self).to_string()
     }
 }
 
 impl TsvSerialize for &i32 {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
+    fn to_tsv(&self, _config: &TsvConfig) -> String {
         format!("{}", self).to_string()
     }
 }
 
 impl TsvSerialize for i32 {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
+    fn to_tsv(&self, _config: &TsvConfig) -> String {
         format!("{}", self).to_string()
     }
 }

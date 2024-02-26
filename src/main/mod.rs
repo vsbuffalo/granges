@@ -217,9 +217,9 @@ enum Commands {
         #[arg(short, long)]
         sort: bool,
 
-        /// add two additional columns (feature name and score) to mimic a BED5 file
+        /// add an additional score columns
         #[arg(short, long)]
-        bed5: bool,
+        scores: bool,
     },
 }
 
@@ -314,8 +314,8 @@ fn run() -> Result<(), GRangesError> {
             num,
             output,
             sort,
-            bed5,
-        }) => granges_random_bed(genome, *num, output.as_ref(), *sort, *bed5),
+            scores,
+        }) => granges_random_bed(genome, *num, output.as_ref(), *sort, *scores),
         None => {
             println!("{}\n", INFO);
             std::process::exit(1);

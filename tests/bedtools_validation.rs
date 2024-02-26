@@ -2,10 +2,14 @@
 
 use granges::{
     commands::granges_random_bed,
-    prelude::GenomicRangesFile,
-    test_utilities::{granges_binary_path, random_bed3file, temp_bedfile},
+    io::parsers::parse_record_with_score,
+    prelude::{read_seqlens, GRanges, GenomicRangesFile, TsvRecordIterator},
+    test_utilities::{granges_binary_path, random_bed3file, random_bed5file, temp_bedfile},
 };
-use std::process::Command;
+use std::{
+    fs::File,
+    process::{Command, Stdio},
+};
 
 #[test]
 fn test_random_bed3file_filetype_detect() {
@@ -226,5 +230,112 @@ fn test_against_bedtools_makewindows() {
                 String::from_utf8_lossy(&granges_output.stdout)
             );
         }
+    }
+}
+
+#[test]
+fn test_against_bedtools_map() {
+    let num_ranges = 100_000;
+    let width = 1_000_000;
+    #[allow(unused_variables)]
+    let step = 10_000; // can uncomment lines below to test this
+
+    let windows_file = temp_bedfile();
+
+    // make windows
+    let granges_windows_output = Command::new(granges_binary_path())
+        .arg("windows")
+        .arg("--genome")
+        .arg("tests_data/hg38_seqlens.tsv")
+        .arg("--width")
+        .arg(width.to_string())
+        // .arg("--step")
+        // .arg(step.to_string())
+        .arg("--output")
+        .arg(windows_file.path())
+        .output()
+        .expect("granges windows failed");
+    assert!(
+        granges_windows_output.status.success(),
+        "{:?}",
+        granges_windows_output
+    );
+
+    // we're going to test all of these operations
+    // TODO/TEST need to test collapse
+    let operations = vec!["sum", "min", "max", "mean", "median"];
+
+    for operation in operations {
+        // create the random data BED5
+        let bedscores_file = random_bed5file(num_ranges);
+
+        let bedtools_path = temp_bedfile();
+        let bedtools_output_file = File::create(&bedtools_path).unwrap();
+
+        // compare map commands
+        let bedtools_output = Command::new("bedtools")
+            .arg("map")
+            .arg("-a")
+            .arg(windows_file.path())
+            .arg("-b")
+            .arg(&bedscores_file.path())
+            .arg("-c")
+            .arg("5")
+            .arg("-o")
+            .arg(operation)
+            .stdout(Stdio::from(bedtools_output_file))
+            .output()
+            .expect("bedtools map failed");
+
+        let granges_output_file = temp_bedfile();
+        let granges_output = Command::new(granges_binary_path())
+            .arg("map")
+            .arg("--genome")
+            .arg("tests_data/hg38_seqlens.tsv")
+            .arg("--left")
+            .arg(windows_file.path())
+            .arg("--right")
+            .arg(bedscores_file.path())
+            .arg("--func")
+            .arg(operation)
+            .arg("--output")
+            .arg(granges_output_file.path())
+            .output()
+            .expect("granges map failed");
+
+        assert!(bedtools_output.status.success(), "{:?}", bedtools_output);
+        assert!(granges_output.status.success(), "{:?}", granges_output);
+
+        let genome = read_seqlens("tests_data/hg38_seqlens.tsv").unwrap();
+
+        let bedtools_iter =
+            TsvRecordIterator::new(bedtools_path.path(), parse_record_with_score).unwrap();
+        let mut bedtools_gr = GRanges::from_iter(bedtools_iter, &genome).unwrap();
+
+        let granges_iter = TsvRecordIterator::new(
+            granges_output_file.path().to_path_buf(),
+            parse_record_with_score,
+        )
+        .unwrap();
+        let mut granges_gr = GRanges::from_iter(granges_iter, &genome).unwrap();
+
+        let granges_data = granges_gr.take_data().unwrap();
+        let bedtools_data = bedtools_gr.take_data().unwrap();
+        assert_eq!(granges_data.len(), bedtools_data.len());
+
+        granges_data
+            .iter()
+            .zip(bedtools_data.iter())
+            .for_each(|(gr_val, bd_val)| match (gr_val, bd_val) {
+                (Some(gr), Some(bd)) => assert!((gr - bd).abs() < 1e-5),
+                // NOTE: for some sum operations with no data,
+                // bedtools returns '.' not 0.0. The latter is more correct
+                // (the sum of the empty set is not NA, it's 0.0).
+                // This is a shim so tests don't stochastically break
+                // in this case.
+                (Some(n), None) if *n == 0.0 => (),
+                (None, None) => (),
+                _ => panic!("{:?}", (&operation, &gr_val, &bd_val)),
+            });
     }
 }

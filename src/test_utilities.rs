@@ -146,7 +146,7 @@ pub fn random_granges_mock_bed5(
         let (start, end) = random_range(chrom_len);
         let bed5_cols = Bed5Addition {
             name: generate_random_string(8),
-            score: generate_random_uniform(0.0, 1.0),
+            score: Some(generate_random_uniform(0.0, 1.0)),
         };
         gr.push_range(seqname, start, end, bed5_cols)?;
     }

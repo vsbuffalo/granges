@@ -1,6 +1,6 @@
 // Copyright (2024) Vince Buffalo
 #![crate_name = "granges"]
-#![doc(html_root_url = "https://docs.rs/granges/")]
+//#![doc(html_root_url = "https://docs.rs/granges/")]
 
 //! # GRanges: Generic Genomic Range and Data Containers
 //!
@@ -12,11 +12,33 @@
 //! operations.
 //!
 //! The GRanges library aims to simplify the creation of powerful, performant genomics tools in
-//! Rust. GRanegs is inspired by the design and ease of use of Bioconductor's
+//! Rust. GRanges is inspired by the design and ease of use of Bioconductor's
 //! [GenomicRanges](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003118)
 //! and [plyranges](https://www.bioconductor.org/packages/release/bioc/html/plyranges.html)
 //! packages, but tools using GRanges are optimized at compile time and thus are typically much
 //! faster.
+//!
+//! ## Table of Contents
+//!
+//! - [GRanges: Generic Genomic Range and Data Containers](#granges-generic-genomic-range-and-data-containers)
+//!   - [GRanges Design](#granges-design)
+//!   - [The `GRanges` container](#the-granges-container)
+//! - [The Overlaps--Map-Combine Pattern](#the-overlapsmapcombine-pattern)
+//!   - [Overlap Joins and the Left Grouped Join](#overlap-joins-and-the-left-grouped-join)
+//!   - [Map-Combine over Joins](#map-combine-over-joins)
+//! - [Example GRanges Workflow](#example-granges-workflow)
+//! - [Loading Data into GRanges](#loading-data-into-granges)
+//! - [Sequence types](#sequence-types)
+//! - [Manipulating GRanges objects](#manipulating-granges-objects)
+//!   - [Creation](#creation)
+//!   - [Range-modifying functions](#range-modifying-functions)
+//!   - [Data-modifying functions](#data-modifying-functions)
+//!   - [Range and Data modifying functions](#range-and-data-modifying-functions)
+//! - [Future Development](#future-development)
+//!   - [Current Limitations](#current-limitations)
+//!   - [Contributing](#contributing)
+//! - [Documentation Guide](#documentation-guide)
+//!
 //!
 //! ## GRanges Design
 //!
@@ -26,11 +48,11 @@
 //! from command line tools and Unix pipes. Analogously, tidyverse unifies data tidying,
 //! summarizing, and modeling by passing and manipulating a datafame down a similar pipeline. Unix
 //! pipes and tidyverse are powerful because they allow the scientist to build highly specialized
-//! analytic tools just by remixing the same core set of data operations. 
+//! analytic tools just by remixing the same core set of data operations.
 //!
 //! GRanges implements many of the same core data joining and manipulation operations as
-//! [plyranges](https://www.bioconductor.org/packages/release/bioc/html/plyranges.html) library and
-//! R's [tidyverse](https://www.tidyverse.org). 
+//! the [plyranges](https://www.bioconductor.org/packages/release/bioc/html/plyranges.html) library and
+//! R's [tidyverse](https://www.tidyverse.org).
 //!
 //! ## The [`GRanges`] container
 //!
@@ -40,7 +62,7 @@
 //! is often not known in advanced. Consequently, the most efficient range container data structure
 //! is a dynamically-growing [`Vec<U>`]. However, when overlaps need to be computed between ranges
 //! across two containers, the *interval tree* data structures are needed. [`GRanges`] supports
-//! conversion between these range container types. 
+//! conversion between these range container types.
 //!
 //! [`GRanges<R, T>`] is also generic over its *data container*, `T`. This allows it to hold *any*
 //! type of data, in any data structure: a [`Vec<f64>`] of numeric stores, an
@@ -57,18 +79,18 @@
 //!
 //! A very common data analysis strategy is **Split-Apply-Combine** pattern ([Wickham,
 //! 2011](https://vita.had.co.nz/papers/plyr.html)). When working with genomic overlaps
-//! and their data, GRanges library relies on its own data analysis pattern known 
+//! and their data, GRanges library relies on its own data analysis pattern known
 //! as **Overlaps--Map-Combine** pattern, which is better suited for common genomic operations and analyses.
 //!
 //! ### Overlap Joins and the Left Grouped Join
 //!
 //! In this pattern, the *left* genomic ranges are "joined" by their *overlaps* with another
-//! *right* genomic ranges. In other words, the *right ranges* that overlap a single *left range* can 
+//! *right* genomic ranges. In other words, the *right ranges* that overlap a single *left range* can
 //! be thought of "joined" to this left range.
 //!
-//! With genomic data, downstream processing is greatly simplified if the results of this join 
-//! are *grouped* by what left range they overlap (see illustration below). This is a special 
-//! kind of join known as a **left grouped join**. 
+//! With genomic data, downstream processing is greatly simplified if the results of this join
+//! are *grouped* by what left range they overlap (see illustration below). This is a special
+//! kind of join known as a **left grouped join**.
 //!
 //!
 //! ```text
@@ -81,19 +103,19 @@
 //! containing the exact same ranges as the input *left ranges*. In other words, *left grouped
 //! joins* are *endomorphic in the range container*. Computationally, this is also extremely
 //! efficient, because the left ranges can be passed through to the results directly (a
-//! zero-overheard operation). 
+//! zero-overheard operation).
 //!
-//! 
+//!
 //!
 //! The [`GRanges`] object returned by [`GRanges::left_overlaps()`] contains a [`JoinData`] (or related)
-//! type as its data container. The [`JoinData`] contains information about each left range's overlaps (e.g. number of 
-//! overlapping bases, fraction of overlaps, etc) in a [`Vec<LeftGroupedJoin>`]. This information about 
+//! type as its data container. The [`JoinData`] contains information about each left range's overlaps (e.g. number of
+//! overlapping bases, fraction of overlaps, etc) in a [`Vec<LeftGroupedJoin>`]. This information about
 //! overlapping ranges may then be used by downstream calculations.
-//! Additionally [`JoinData`] stores the left ranges' data container, and has a *reference* to 
-//! the right ranges' data container. In both cases, the data is *unchanged* by the join. 
+//! Additionally [`JoinData`] stores the left ranges' data container, and has a *reference* to
+//! the right ranges' data container. In both cases, the data is *unchanged* by the join.
 //! Downstream processing can also easily access the left ranges's data and all overlapping right ranges'
 //! data for calculations.
-//! 
+//!
 //! ### Map-Combine over Joins
 //!
 //! After a left grouped join, each left range can have zero or more overlapping right ranges.
@@ -101,80 +123,73 @@
 //! overlaps information, and then combines that into a single data entry per left range. These
 //! combined data entries make up a new [`GRanges<R, Vec<V>>`] data container, returned by [`GRanges::map_over_joins()`].
 //!
-//! Note that like [`GRanges::left_overlaps()`], the [`GRanges::map_over_joins()`] is endomorphic 
-//! over its range container. This means it can be passed through without modification, which 
-//! is computationally efficient. This results from a Map-Combine operation then can be overlap joined with 
+//! Note that like [`GRanges::left_overlaps()`], the [`GRanges::map_over_joins()`] is endomorphic
+//! over its range container. This means it can be passed through without modification, which
+//! is computationally efficient. This results from a Map-Combine operation then can be overlap joined with
 //! other genomic ranges, filtered, have its data arbitrarily manipulated by [`GRanges::map_data()`], etc.
 //!
-//! ## Example
+//! ## Example GRanges Workflow
 //!
 //! To illustrate these ideas, lets look at an example of how we might use GRanges to do a
 //! a commonly-encountered genomic calculation. Suppose you had a set of exon genomic ranges (the *left
 //! ranges*) and a multicolumn TSV (*right ranges*) of various genomic features (e.g. assay
 //! results, recombination hotspots, variants, etc). Imagine you wanted to form some statistic per
 //! each exon, based on data in the overlapping right ranges. This operation is very
-//! similar to `bedtools map`, except that suppose the statistic you want to calculate is not one of the 
+//! similar to `bedtools map`, except that suppose the statistic you want to calculate is not one of the
 //! few offered by bedtools. GRanges makes it simple to compose your own, very fast genomic tools to answer these
 //! questions.
 //!
 //! To see how GRanges would make it simple to compose a specialized fast tool to solve this
 //! problem, let's fist see how few lines of code it would take to implement `bedtools map`,
 //! since our problem is akin to using `bedtools map` with our own function to calculate our statistic.
-//! Let's start by getting the mean score by seeing how to get the mean BED5 score across all 
-//! overlapping right ranges for each left range (i.e. `bedtools map -a <left> -b <right> -c 5 mean`). 
+//! Let's start by getting the mean score by seeing how to get the mean BED5 score across all
+//! overlapping right ranges for each left range (i.e. `bedtools map -a <left> -b <right> -c 5 mean`).
 //! Here is the Rust code to do this using GRanges:
 //!
 //! ```
 //! # use granges::prelude::*;
 //! # fn try_main() -> Result<(), granges::error::GRangesError> {
 //!
-//! // Data for example:
+//! // Mock sequence lengths (e.g. "genome" file)
 //! let genome = seqlens!("chr1" => 100, "chr2" => 100);
-//! let left_path = "tests_data/bedtools/map_a.txt";
-//! let right_path = "tests_data/bedtools/map_b.txt";
-//!
-//! // Read in the "genome file" of chromosomes and their lengths.
-//! let seqnames: Vec<String> = genome.keys().cloned().collect();
 //!
 //! // Create parsing iterators to the left and right BED files.
-//! let left_iter = Bed3Iterator::new(left_path).expect("error inferring filetype");
-//! let right_iter = Bed5Iterator::new(right_path).expect("error inferring filetype");
+//! let left_iter = Bed3Iterator::new("tests_data/bedtools/map_a.txt")?;
+//! let right_iter = Bed5Iterator::new("tests_data/bedtools/map_b.txt")?;
 //!
 //! // Filter out any ranges from chromosomes not in our genome file.
-//! let left_gr = GRangesEmpty::from_iter(left_iter.retain_seqnames(&seqnames), &genome)
-//!                  .expect("error parsing file");
-//! let right_gr = GRanges::from_iter(right_iter.retain_seqnames(&seqnames), &genome)
-//!                  .expect("error parsing file");
-//!
+//! let left_gr = GRangesEmpty::from_iter(left_iter, &genome)?;
+//! let right_gr = GRanges::from_iter(right_iter, &genome)?;
 //!
 //! // Create the "right" GRanges object, convert the ranges to an
 //! // interval trees, and tidy it by selecting out a f64 score.
-//! let right_gr = {
-//!     right_gr
+//! let right_gr = right_gr
 //!         // Convert to interval trees.
-//!         .into_coitrees().expect("error computing interval trees")
+//!         .into_coitrees()?
 //!         // Extract out just the score from the additional BED5 columns.
 //!         .map_data(|bed5_cols| {
 //!             bed5_cols.score
-//!         }).expect("error selecting score")
-//! };
+//!         })?;
 //!
 //! // Find the overlaps by doing a *left grouped join*.
-//! let left_join_gr = left_gr.left_overlaps(&right_gr)
-//!                        .expect("error in computing overlaps");
+//! let left_join_gr = left_gr.left_overlaps(&right_gr)?;
 //!
 //! // Process all the overlaps.
 //! let result_gr = left_join_gr.map_over_joins(|join_data| {
 //!     // Get the "right data" -- the BED5 scores.
-//!     let overlap_scores = join_data.right_data;
+//!     let overlap_scores: Vec<f64> = join_data.right_data.into_iter()
+//!            // filter out missing values ('.' in BED)
+//!            .filter_map(|x| x).collect();
+//!
+//!     // calculate the mean
 //!     let score_sum: f64 = overlap_scores.iter().sum();
 //!     score_sum / (overlap_scores.len() as f64)
-//! }).expect("error computing mean score");
+//! })?;
 //!
 //! // Write to a TSV file, using the BED TSV format standards
 //! // for missing values, etc.
-//! let path = Some("map_results.bed.gz");
-//! result_gr.to_tsv(path, &BED_TSV).expect("error writing output");
+//! let tempfile = tempfile::NamedTempFile::new().unwrap();
+//! result_gr.to_tsv(Some(tempfile.path()), &BED_TSV)?;
 //! # Ok(())
 //! # }
 //! # fn main() { try_main().unwrap(); }
@@ -198,11 +213,11 @@
 //!     [`GRanges`] objects then provide high-level in-memory methods for working with this
 //!     genomic data.
 //!
-//! In the example above, we loaded the items in the parsing iterators directly into 
+//! In the example above, we loaded the items in the parsing iterators directly into
 //! [`GRanges`] objects, since we had to do overlap operations (in the future, GRanges will
 //! support streaming overlap joins for position-sorted input data).
 //!
-//! Both processing modes eventually output something, e.g. a TSV of some statistic calculated 
+//! Both processing modes eventually output something, e.g. a TSV of some statistic calculated
 //! on the genomic data, the output of 10 million block bootstraps, or the coefficients of
 //! linear regressions run every kilobase on sequence data.
 //!
@@ -228,7 +243,22 @@
 //!
 //! ```
 //!
-//! ## Manipulating GRanges objects 
+//! ## Sequence types
+//!
+//! Genomic processing also involves working with *sequence* data types, which abstractly are
+//! per-basepair data that cover the entire genome (and in the case of the reference sequence,
+//! *define* the genome coordinates). Nucleotide sequences are just a special case of this,
+//! where the per-basepair data are nucleotides (which under the hood are just an unsigned
+//! byte-length integer). There are many other per-basepair data types, e.g. conservation scores.
+//!
+//! Sequence data types are like a [`GRanges`] where the range container
+//! is implied as per-basepair, and the data container contains the per-basepair data.
+//! GRanges allows arbitrary data to be stored and manipulated (see the [sequences]
+//! module) in sequence types: numeric data, nucleotides, and arrays per basepair.
+//! Since loading an entire genome's per-basepair data into memory would be inefficient,
+//! sequence types implement lazy-loading.
+//!
+//! ## Manipulating GRanges objects
 //!
 //! 1. *Creation*: [`GRanges::new_vec()`], [`GRanges::from_iter()`], [`GRangesEmpty::from_windows()`].
 //!
@@ -241,21 +271,21 @@
 //!
 //! Note that not all range and data container types support these operations, e.g.
 //! [`GRanges::push_range()`] is not available for ranges stored in an interval tree.
-//! However, by design, this is known *at compile time*, due Rust's typing system. Thus 
-//! there is lower risk of runtime panics, since more potential issues are caught at 
+//! However, by design, this is known *at compile time*, due Rust's typing system. Thus
+//! there is lower risk of runtime panics, since more potential issues are caught at
 //! compile time.
 //!
-//! ## The (Active) Future
+//! ## Future Development
 //!
 //! When I was first learning Rust as a developer, one thing that struck me about the language
-//! is that it feels *minimal but never constraining*. This is quite a contrast compared to 
+//! is that it feels *minimal but never constraining*. This is quite a contrast compared to
 //! languages like C++. As Rust developers know, the minimalness was by design; the
-//! cultural norm of slow growth produced a better final product in the end. 
+//! cultural norm of slow growth produced a better final product in the end.
 //!
 //! The GRanges library attempts to follow this design too. Currently, the alpha release is
-//! about implementating a subset of essential core functionality to benchmark against 
+//! about implementating a subset of essential core functionality to benchmark against
 //! alternative software. Since the design and ergonomics of the API are under active development,
-//! please, *please*, file a GitHub issue if:
+//! please, *please*, create a [GitHub issue](http://github.com/vsbuffalo/granges/issues) if:
 //!
 //!  1. You want a particular feature.
 //!
@@ -263,6 +293,36 @@
 //!
 //!  3. The ["ergonomics"](https://blog.rust-lang.org/2017/03/02/lang-ergonomics.html) don't
 //!     feel right.
+//!
+//! ### Current Limitations
+//!  
+//! The biggest current limitations are:
+//!  
+//!  1. *No native support for GTF/GFF/VCF*. It is relatively easy to write custom parsers
+//!      for these types, or use the [noodles](https://crates.io/crates/noodles) libary's
+//!      parsers.
+//!
+//!  2. *No out-of-memory overlap operations*. This is relatively easy to add, and will be
+//!      added in future.
+//!  
+//!  3. *No BAM (BCF, or other binary) file support*. Again, these formats can be easily loaded
+//!      by wrapping the parsers in the [noodles](https://crates.io/crates/noodles) libary.
+//!      Future version of GRanges will likely have a `--features=nooodles` option,
+//!      which will provide convenience for this.
+//!
+//!  4. *Parallelized operations are not in the `main` branch yet*. I have written parallel
+//!      iterators that can be used for operations, but these need to be ported over to the
+//!      latest design.
+//!
+//!  5. Lack of TSV column type inference methods. This would make loading and working with arbitrary
+//!     TSV files with heterogeneous column types easier.
+//!
+//! ### Contributing
+//!
+//! If you are interested in contributing to GRanges, please contact Vince Buffalo (@vsbuffalo on
+//! Twitter and GitHub), starting [a new
+//! discussion](https://github.com/vsbuffalo/granges/discussions), or [creating a GitHub
+//! issue](https://github.com/vsbuffalo/granges/discussions).
 //!
 //! ## Documentation Guide
 //!
@@ -277,6 +337,7 @@
 //! [`GRanges::filter_overlaps()`]: granges::GRanges::filter_overlaps
 //! [`GRanges<R, T>`]: crate::granges::GRanges
 //! [parsers]: crate::io::parsers
+//! [sequences]: crate::sequences
 //! [`ndarray::Array2`]: ndarray::Array2
 //! [`GRanges::left_overlaps()`]: crate::traits::LeftOverlaps::left_overlaps
 //! [`GRanges<R, Vec<V>>`]: crate::granges::GRanges
@@ -290,7 +351,6 @@
 //! [`GRanges::sort()`]: crate::granges::GRanges::sort
 //! [`GRanges::from_iter()`]: crate::granges::GRanges::from_iter
 //! [`GRangesEmpty::from_windows()`]: crate::granges::GRangesEmpty::from_windows
-// TODO broken links, gr!
 
 pub use indexmap;
 
