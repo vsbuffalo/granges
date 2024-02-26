@@ -1,5 +1,10 @@
 //! Implementations of various operations on data.
 //!
+//! # 🐌 Performance Note
+//!
+//! Currently operations are not much faster than bedtools (11%-13%).
+//! These methods can be made faster by looping over data once, collecting
+//! the quantities that may make up different statistics.
 
 use clap::ValueEnum;
 use num_traits::{Float, ToPrimitive};
@@ -37,20 +42,20 @@ pub enum Operation {
 }
 
 impl Operation {
-    pub fn run<T: IntoDatumType>(&self, data: &[T]) -> DatumType
+    pub fn run<T: IntoDatumType + Copy>(&self, data: &[T]) -> DatumType
     where
         T: Float + Sum<T> + ToPrimitive + Clone + ToString,
     {
         match self {
             Operation::Sum => {
-                let sum: T = data.iter().cloned().sum();
+                let sum: T = data.iter().copied().sum();
                 sum.into_data_type()
             }
             Operation::Min => {
                 let min = data
                     .iter()
                     .filter(|x| x.is_finite())
-                    .cloned()
+                    .copied()
                     .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater));
                 min.map_or(DatumType::NoValue, |x| x.into_data_type())
             }
@@ -58,7 +63,7 @@ impl Operation {
                 let max = data
                     .iter()
                     .filter(|x| x.is_finite())
-                    .cloned()
+                    .copied()
                     .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Less));
                 max.map_or(DatumType::NoValue, |x| x.into_data_type())
             }
@@ -66,7 +71,7 @@ impl Operation {
                 if data.is_empty() {
                     DatumType::NoValue
                 } else {
-                    let sum: T = data.iter().cloned().sum();
+                    let sum: T = data.iter().copied().sum();
                     let mean = sum / T::from(data.len()).unwrap();
                     mean.into_data_type()
                 }

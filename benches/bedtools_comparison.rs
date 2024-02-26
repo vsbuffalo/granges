@@ -5,8 +5,13 @@
 //! ensure the output is the *exact* same.
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use granges::test_utilities::{granges_binary_path, random_bed3file};
-use std::process::Command;
+use granges::test_utilities::{
+    granges_binary_path, random_bed3file, random_bed5file, temp_bedfile,
+};
+use std::{
+    fs::File,
+    process::{Command, Stdio},
+};
 
 const BED_LENGTH: usize = 100_000;
 
@@ -146,8 +151,8 @@ fn bench_flank(c: &mut Criterion) {
 }
 
 fn bench_windows(c: &mut Criterion) {
-    let width = 100_000;
-    let step = 1_000;
+    let width = 1_000_000;
+    let step = 10_000;
 
     // create the benchmark group
     let mut group = c.benchmark_group("windows");
@@ -187,11 +192,175 @@ fn bench_windows(c: &mut Criterion) {
     });
 }
 
+fn bench_map(c: &mut Criterion) {
+    let num_ranges = BED_LENGTH;
+    let width = 100_000;
+    #[allow(unused_variables)]
+    let step = 1_000;
+
+    // make windows
+    let windows_file = temp_bedfile();
+    let granges_windows_output = Command::new(granges_binary_path())
+        .arg("windows")
+        .arg("--genome")
+        .arg("tests_data/hg38_seqlens.tsv")
+        .arg("--width")
+        .arg(width.to_string())
+        // .arg("--step")
+        // .arg(step.to_string())
+        .arg("--output")
+        .arg(windows_file.path())
+        .output()
+        .expect("granges windows failed");
+    assert!(
+        granges_windows_output.status.success(),
+        "{:?}",
+        granges_windows_output
+    );
+
+    let operations = vec!["sum", "min", "max", "mean", "median"];
+
+    for operation in operations {
+        // create the random data BED5
+        let bedscores_file = random_bed5file(num_ranges);
+        let bedtools_path = temp_bedfile();
+
+        // create the benchmark group
+        let mut group = c.benchmark_group(format!("map_{}", operation).to_string());
+
+        // configure the sample size for the group
+        group.sample_size(10);
+        group.bench_function("bedtools_map", |b| {
+            b.iter(|| {
+                let bedtools_output_file = File::create(&bedtools_path).unwrap();
+                let bedtools_output = Command::new("bedtools")
+                    .arg("map")
+                    .arg("-a")
+                    .arg(windows_file.path())
+                    .arg("-b")
+                    .arg(&bedscores_file.path())
+                    .arg("-c")
+                    .arg("5")
+                    .arg("-o")
+                    .arg(operation)
+                    .stdout(Stdio::from(bedtools_output_file))
+                    .output()
+                    .expect("bedtools map failed");
+
+                assert!(bedtools_output.status.success());
+            });
+        });
+
+        group.bench_function("granges_map", |b| {
+            b.iter(|| {
+                let granges_output_file = temp_bedfile();
+                let granges_output = Command::new(granges_binary_path())
+                    .arg("map")
+                    .arg("--genome")
+                    .arg("tests_data/hg38_seqlens.tsv")
+                    .arg("--left")
+                    .arg(windows_file.path())
+                    .arg("--right")
+                    .arg(bedscores_file.path())
+                    .arg("--func")
+                    .arg(operation)
+                    .arg("--output")
+                    .arg(granges_output_file.path())
+                    .output()
+                    .expect("granges map failed");
+
+                assert!(granges_output.status.success());
+            });
+        });
+    }
+}
+
+fn bench_map_all_operations(c: &mut Criterion) {
+    let num_ranges = BED_LENGTH;
+    let width = 100_000;
+    #[allow(unused_variables)]
+    let step = 1_000;
+
+    // make windows
+    let windows_file = temp_bedfile();
+    let granges_windows_output = Command::new(granges_binary_path())
+        .arg("windows")
+        .arg("--genome")
+        .arg("tests_data/hg38_seqlens.tsv")
+        .arg("--width")
+        .arg(width.to_string())
+        // .arg("--step")
+        // .arg(step.to_string())
+        .arg("--output")
+        .arg(windows_file.path())
+        .output()
+        .expect("granges windows failed");
+    assert!(
+        granges_windows_output.status.success(),
+        "{:?}",
+        granges_windows_output
+    );
+
+    // create the random data BED5
+    let bedscores_file = random_bed5file(num_ranges);
+    let bedtools_path = temp_bedfile();
+
+    // create the benchmark group
+    let mut group = c.benchmark_group("map_multiple");
+
+    // configure the sample size for the group
+    group.sample_size(10);
+    group.bench_function("bedtools_map", |b| {
+        b.iter(|| {
+            let bedtools_output_file = File::create(&bedtools_path).unwrap();
+            let bedtools_output = Command::new("bedtools")
+                .arg("map")
+                .arg("-a")
+                .arg(windows_file.path())
+                .arg("-b")
+                .arg(&bedscores_file.path())
+                .arg("-c")
+                .arg("5")
+                .arg("-o")
+                .arg("min,max,mean,sum,median")
+                .stdout(Stdio::from(bedtools_output_file))
+                .output()
+                .expect("bedtools map failed");
+
+            assert!(bedtools_output.status.success());
+        });
+    });
+
+    group.bench_function("granges_map", |b| {
+        b.iter(|| {
+            let granges_output_file = temp_bedfile();
+            let granges_output = Command::new(granges_binary_path())
+                .arg("map")
+                .arg("--genome")
+                .arg("tests_data/hg38_seqlens.tsv")
+                .arg("--left")
+                .arg(windows_file.path())
+                .arg("--right")
+                .arg(bedscores_file.path())
+                .arg("--func")
+                .arg("min,max,mean,sum,median")
+                .arg("--output")
+                .arg(granges_output_file.path())
+                .output()
+                .expect("granges map failed");
+
+            assert!(granges_output.status.success());
+        });
+    });
+}
+
 criterion_group!(
     benches,
     bench_filter_adjustment,
     bench_range_adjustment,
     bench_flank,
     bench_windows,
+    bench_map,
+    bench_map_all_operations,
 );
 criterion_main!(benches);

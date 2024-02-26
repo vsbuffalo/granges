@@ -147,7 +147,7 @@ where
 {
     /// Apply `func` to each element, putting the results into the returned
     /// `Vec<U>`.
-    pub fn map<F, V>(&self, func: F) -> Vec<V>
+    pub fn map<F, V>(self, func: F) -> Vec<V>
     where
         F: Fn(
             CombinedJoinData<
@@ -157,7 +157,7 @@ where
         ) -> V,
     {
         self.joins
-            .iter()
+            .into_iter()
             .map(|join| {
                 let left_data = self.left_data.get_owned(join.left.unwrap());
                 let right_data = join
@@ -169,7 +169,7 @@ where
                     .collect();
 
                 func(CombinedJoinData {
-                    join: join.clone(),
+                    join,
                     left_data,
                     right_data,
                 })
@@ -243,14 +243,14 @@ where
 {
     /// Apply `func` to each element, putting the results into the returned
     /// `Vec<U>`.
-    pub fn map<F, V>(&self, func: F) -> Vec<V>
+    pub fn map<F, V>(self, func: F) -> Vec<V>
     where
         F: Fn(CombinedJoinDataLeftEmpty<<DR as IndexedDataContainer>::OwnedItem>) -> V,
     {
         // TODO/OPTIMIZE: would consuming here (and analagous funcs) be better/faster?
         // Would require a bit of a redesign.
         self.joins
-            .iter()
+            .into_iter()
             .map(|join| {
                 let right_indices = join.rights.as_ref();
                 let right_data = right_indices.map_or(Vec::new(), |indices| {
@@ -260,10 +260,7 @@ where
                         .collect()
                 });
 
-                func(CombinedJoinDataLeftEmpty {
-                    join: join.clone(),
-                    right_data,
-                })
+                func(CombinedJoinDataLeftEmpty { join, right_data })
             })
             .collect()
     }
@@ -334,19 +331,16 @@ where
 {
     /// Apply `func` to each element, putting the results into the returned
     /// `Vec<U>`.
-    pub fn map<F, V>(&self, func: F) -> Vec<V>
+    pub fn map<F, V>(self, func: F) -> Vec<V>
     where
         F: Fn(CombinedJoinDataRightEmpty<<DL as IndexedDataContainer>::OwnedItem>) -> V,
     {
         self.joins
-            .iter()
+            .into_iter()
             .map(|join| {
                 let left_data = self.left_data.get_owned(join.left.unwrap());
 
-                func(CombinedJoinDataRightEmpty {
-                    join: join.clone(),
-                    left_data,
-                })
+                func(CombinedJoinDataRightEmpty { join, left_data })
             })
             .collect()
     }
@@ -412,13 +406,13 @@ impl JoinDataOperations<(), ()> for CombinedJoinDataBothEmpty {
 impl JoinDataBothEmpty {
     /// Apply `func` to each element, putting the results into the returned
     /// `Vec<U>`.
-    pub fn map<F, V>(&self, func: F) -> Vec<V>
+    pub fn map<F, V>(self, func: F) -> Vec<V>
     where
         F: Fn(CombinedJoinDataBothEmpty) -> V,
     {
         self.joins
-            .iter()
-            .map(|join| func(CombinedJoinDataBothEmpty { join: join.clone() }))
+            .into_iter()
+            .map(|join| func(CombinedJoinDataBothEmpty { join }))
             .collect()
     }
 }

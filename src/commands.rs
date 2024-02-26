@@ -454,13 +454,18 @@ pub fn granges_map(
 
     // Process all the overlaps.
     let result_gr = left_join_gr.map_over_joins(|join_data| {
-        // Get the "right data" -- the BED5 scores.
-        let overlap_scores: Vec<f64> = join_data.right_data.into_iter().filter_map(|x| x).collect();
+        // Get the "right data" -- the BED5 scores
+        let overlap_scores: Vec<f64> = join_data
+            .right_data
+            .into_iter()
+            // Filter out the `None` values.
+            .flatten()
+            .collect();
 
         // Run all operations on the scores.
         operations
             .iter()
-            .map(|operation| operation.run(overlap_scores.as_ref()))
+            .map(|operation| operation.run(&overlap_scores))
             .collect::<Vec<DatumType>>()
     })?;
 

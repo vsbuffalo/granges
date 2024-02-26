@@ -240,9 +240,8 @@ fn test_against_bedtools_map() {
     #[allow(unused_variables)]
     let step = 10_000; // can uncomment lines below to test this
 
-    let windows_file = temp_bedfile();
-
     // make windows
+    let windows_file = temp_bedfile();
     let granges_windows_output = Command::new(granges_binary_path())
         .arg("windows")
         .arg("--genome")

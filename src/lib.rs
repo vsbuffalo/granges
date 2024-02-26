@@ -30,10 +30,6 @@
 //! - [Loading Data into GRanges](#loading-data-into-granges)
 //! - [Sequence types](#sequence-types)
 //! - [Manipulating GRanges objects](#manipulating-granges-objects)
-//!   - [Creation](#creation)
-//!   - [Range-modifying functions](#range-modifying-functions)
-//!   - [Data-modifying functions](#data-modifying-functions)
-//!   - [Range and Data modifying functions](#range-and-data-modifying-functions)
 //! - [Future Development](#future-development)
 //!   - [Current Limitations](#current-limitations)
 //!   - [Contributing](#contributing)
@@ -317,6 +313,8 @@
 //!  5. Lack of TSV column type inference methods. This would make loading and working with arbitrary
 //!     TSV files with heterogeneous column types easier.
 //!
+//!  ⚠️:Note that the GRanges API, as well as type names, may change.
+//!
 //! ### Contributing
 //!
 //! If you are interested in contributing to GRanges, please contact Vince Buffalo (@vsbuffalo on
@@ -330,6 +328,7 @@
 //!  - ⚠️: indicates a method or type that is unstable (it may change in future implementations),
 //!     or is "sharp" (developer error could cause a panic).
 //!  - 🚀: optimization tip.
+//!  - 🐌: indicates slow code in need of future optimization.
 //!
 //! [`JoinData`]: crate::join::JoinData
 //! [`GRanges`]: crate::granges::GRanges
