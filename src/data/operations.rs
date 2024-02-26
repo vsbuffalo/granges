@@ -14,18 +14,19 @@ use super::DatumType;
 use crate::traits::IntoDatumType;
 
 /// Calculate the median.
-///
-/// This will clone and turn `numbers` into a `Vec`.
-pub fn median<F: Float + Sum>(numbers: &[F]) -> Option<F> {
+pub fn median<F: Float + Sum>(numbers: &mut [F]) -> Option<F> {
     if numbers.is_empty() {
         return None;
     }
-    let mut numbers = numbers.to_vec();
-    numbers.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mid = numbers.len() / 2;
     if numbers.len() % 2 == 0 {
-        Some((numbers[mid - 1] + numbers[mid]) / F::from(2.0).unwrap())
+        numbers.select_nth_unstable_by(mid-1, |a, b| a.partial_cmp(b).unwrap());
+        let lower = numbers[mid-1];
+        numbers.select_nth_unstable_by(mid, |a, b| a.partial_cmp(b).unwrap());
+        let upper = numbers[mid];
+        Some((lower + upper) / F::from(2.0).unwrap())
     } else {
+        numbers.select_nth_unstable_by(mid, |a, b| a.partial_cmp(b).unwrap());
         Some(numbers[mid])
     }
 }
@@ -42,7 +43,8 @@ pub enum Operation {
 }
 
 impl Operation {
-    pub fn run<T: IntoDatumType + Copy>(&self, data: &[T]) -> DatumType
+    #[inline(always)]
+    pub fn run<T: IntoDatumType + Copy>(&self, data: &mut [T]) -> DatumType
     where
         T: Float + Sum<T> + ToPrimitive + Clone + ToString,
     {
@@ -87,4 +89,34 @@ impl Operation {
             }
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+        use super::*;
+
+    #[test]
+    fn test_median_empty() {
+        let mut numbers: Vec<f64> = vec![];
+        assert_eq!(median(&mut numbers), None);
+    }
+
+    #[test]
+    fn test_median_odd() {
+        let mut numbers = vec![2.0, 3.0, 1.0];
+        assert_eq!(median(&mut numbers), Some(2.0));
+    }
+
+    #[test]
+    fn test_median_even() {
+        let mut numbers = vec![1.0, 2.0, 3.0, 4.0];
+        assert_eq!(median(&mut numbers), Some(2.5));
+    }
+
+    #[test]
+    fn test_median_negative() {
+        let mut numbers = vec![-3.0, -1.0, -2.0];
+        assert_eq!(median(&mut numbers), Some(-2.0));
+    }
+
 }

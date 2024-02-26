@@ -27,6 +27,7 @@ bytes = "1.5.0"
 ndarray-npy = { version = "0.8.1", optional = true }
 num-traits = "0.2.18"
 lazy_static = "1.4.0"
+medians = "3.0.6"
 
 [features]
 # cli = [ "clap" ]  # TODO make feature

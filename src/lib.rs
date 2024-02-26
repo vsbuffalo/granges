@@ -171,7 +171,7 @@
 //! let left_join_gr = left_gr.left_overlaps(&right_gr)?;
 //!
 //! // Process all the overlaps.
-//! let result_gr = left_join_gr.map_over_joins(|join_data| {
+//! let results_gr = left_join_gr.map_over_joins(|join_data| {
 //!     // Get the "right data" -- the BED5 scores.
 //!     let overlap_scores: Vec<f64> = join_data.right_data.into_iter()
 //!            // filter out missing values ('.' in BED)
@@ -185,7 +185,7 @@
 //! // Write to a TSV file, using the BED TSV format standards
 //! // for missing values, etc.
 //! let tempfile = tempfile::NamedTempFile::new().unwrap();
-//! result_gr.to_tsv(Some(tempfile.path()), &BED_TSV)?;
+//! results_gr.to_tsv(Some(tempfile.path()), &BED_TSV)?;
 //! # Ok(())
 //! # }
 //! # fn main() { try_main().unwrap(); }
