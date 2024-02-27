@@ -75,6 +75,9 @@ pub enum GRangesError {
     #[error("File reading error: {0}. Please check if the file exists and you have permission to read it.")]
     IOError(#[from] std::io::Error),
 
+    #[error("File parsing error: {0}")]
+    TsvParsingError(#[from] csv::Error),
+
     // File parsing related errors
     #[error("Could not determine the file type based on its extension. Ensure the file has a standard genomic data extension (.bed, .gff, etc.).")]
     CouldNotDetectRangesFiletype,

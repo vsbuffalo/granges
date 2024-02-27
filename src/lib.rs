@@ -117,9 +117,9 @@
 //! After a left grouped join, each left range can have zero or more overlapping right ranges.
 //! A *map-combine* operation (optionally) maps a function over all right ranges' data and
 //! overlaps information, and then combines that into a single data entry per left range. These
-//! combined data entries make up a new [`GRanges<R, Vec<V>>`] data container, returned by [`GRanges::map_over_joins()`].
+//! combined data entries make up a new [`GRanges<R, Vec<V>>`] data container, returned by [`GRanges::map_joins()`].
 //!
-//! Note that like [`GRanges::left_overlaps()`], the [`GRanges::map_over_joins()`] is endomorphic
+//! Note that like [`GRanges::left_overlaps()`], the [`GRanges::map_joins()`] is endomorphic
 //! over its range container. This means it can be passed through without modification, which
 //! is computationally efficient. This results from a Map-Combine operation then can be overlap joined with
 //! other genomic ranges, filtered, have its data arbitrarily manipulated by [`GRanges::map_data()`], etc.
@@ -171,7 +171,7 @@
 //! let left_join_gr = left_gr.left_overlaps(&right_gr)?;
 //!
 //! // Process all the overlaps.
-//! let results_gr = left_join_gr.map_over_joins(|join_data| {
+//! let results_gr = left_join_gr.map_joins(|join_data| {
 //!     // Get the "right data" -- the BED5 scores.
 //!     let overlap_scores: Vec<f64> = join_data.right_data.into_iter()
 //!            // filter out missing values ('.' in BED)
@@ -261,7 +261,7 @@
 //! 2. *Range-modifying* functions: [`GRanges::into_coitrees()`], [`GRanges::adjust_ranges()`], [`GRanges::sort()`],
 //!        [`GRanges::flanking_ranges()`], [`GRanges::filter_overlaps()`].
 //!
-//! 3. *Data-modifying* functions: [`GRanges::left_overlaps()`], [`GRanges::map_over_joins()`], [`GRanges::map_data()`].
+//! 3. *Data-modifying* functions: [`GRanges::left_overlaps()`], [`GRanges::map_joins()`], [`GRanges::map_data()`].
 //!
 //! 4. *Range and Data modifying* functions: [`GRanges::push_range()`].
 //!
@@ -340,7 +340,7 @@
 //! [`ndarray::Array2`]: ndarray::Array2
 //! [`GRanges::left_overlaps()`]: crate::traits::LeftOverlaps::left_overlaps
 //! [`GRanges<R, Vec<V>>`]: crate::granges::GRanges
-//! [`GRanges::map_over_joins()`]: crate::granges::GRanges::map_over_joins
+//! [`GRanges::map_joins()`]: crate::granges::GRanges::map_joins
 //! [`GRanges::map_data()`]: crate::granges::GRanges::map_data
 //! [`GRanges::new_vec()`]: crate::granges::GRanges::new_vec
 //! [`GRanges::into_coitrees()`]: crate::granges::GRanges::into_coitrees

@@ -36,7 +36,7 @@ let results_gr = left_gr
     // Find overlaps
     .left_overlaps(&right_gr)?
     // Summarize overlap data
-    .map_over_joins(mean_score)?;
+    .map_joins(mean_score)?;
 ```
 
 where `mean_score()` is:
@@ -84,54 +84,49 @@ server, here are two runs with 100,000 ranges per operation, and n = 100 samples
 # run 1
 command       bedtools time    granges time      granges speedup (%)
 ------------  ---------------  --------------  ---------------------
-map_multiple  293.41 s         129.99 s                     55.6963
-map_max       131.97 s         111.39 s                     15.5938
-adjust        127.36 s         59.25 s                      53.4811
-filter        113.70 s         101.01 s                     11.1607
-map_min       116.84 s         108.16 s                      7.42583
-flank         150.95 s         86.25 s                      42.8602
-map_mean      116.50 s         143.70 s                    -23.3524
-map_sum       110.60 s         111.39 s                     -0.71377
-windows       476.12 s         67.82 s                      85.7555
-map_median    154.51 s         104.37 s                     32.4551
-
+map_multiple  270.21 s         112.66 s                      58.3073
+map_max       105.46 s         84.03 s                       20.3185
+adjust        112.42 s         53.48 s                       52.4269
+filter        114.23 s         77.96 s                       31.7512
+map_min       116.22 s         78.93 s                       32.0839
+flank         162.77 s         80.67 s                       50.4383
+map_mean      107.05 s         81.89 s                       23.5073
+map_sum       108.43 s         93.35 s                       13.9083
+windows       408.03 s         72.58 s                       82.2121
+map_median    108.57 s         87.32 s                       19.5731
+ 
 # run 2
 command       bedtools time    granges time      granges speedup (%)
 ------------  ---------------  --------------  ---------------------
-map_multiple  348.14 s         124.29 s                     64.2979
-map_max       126.27 s         107.05 s                     15.2267
-adjust        126.51 s         59.23 s                      53.1802
-filter        114.66 s         97.28 s                      15.1542
-map_min       118.61 s         113.02 s                      4.72037
-flank         165.31 s         80.97 s                      51.0211
-map_mean      133.39 s         108.22 s                     18.867
-map_sum       120.28 s         128.68 s                     -6.98736
-windows       476.22 s         90.89 s                      80.9151
-map_median    106.83 s         104.37 s                      2.30808
+map_multiple  293.24 s         103.66 s                      64.6495
+map_max       117.84 s         82.39 s                       30.0855
+adjust        110.09 s         51.63 s                       53.0999
+filter        120.36 s         67.79 s                       43.6784
+map_min       114.76 s         86.06 s                       25.0081
+flank         160.20 s         75.69 s                       52.756
+map_mean      116.97 s         85.12 s                       27.2331
+map_sum       114.39 s         85.96 s                       24.8557
+windows       418.87 s         65.13 s                       84.4515
+map_median    112.35 s         82.81 s                       26.2995
 ```
 
-The worse performance of `map_mean` in run 1, upon closer inspection, is
-largely driven by [aberrant
-replicates](https://github.com/vsbuffalo/granges/issues/2). (The server is
-under heavy use by others, which adds variance to these benchmarks.) Note too
-that unlike `bedtools`, `granges` *always* requires a genome file of chromosome
-lengths for validation; this disk I/O adds to GRange's benchmark times. 
-
-Here is another benchmark with smaller test datasets (10,000 ranges) and many
-more replicates:
+Note however, there is a arithmetic scaling issue. Larger range datasets
+(1,000,000) lead to map operations that are inefficient. This is almost surely 
+due to `data/operations.rs`. Here is an example benchmark:
 
 ```
 command       bedtools time    granges time      granges speedup (%)
 ------------  ---------------  --------------  ---------------------
-map_multiple  133.41 s         77.81 s                      41.6736
-adjust        60.23 s          40.06 s                      33.4794
-map_min       67.11 s          59.31 s                      11.6281
-map_mean      64.76 s          59.29 s                       8.43342
-map_max       67.04 s          59.30 s                      11.5468
-map_sum       66.89 s          60.01 s                      10.2835
-map_median    65.63 s          59.47 s                       9.37911
-flank         84.42 s          57.62 s                      31.7415
-filter        77.95 s          56.65 s                      27.3318
-windows       291.41 s         51.47 s                      82.3359
+map_multiple  26.89 min        688.60 s                     57.3189
+map_max       21.34 min        21.54 min                    -0.94889  *
+adjust        21.35 min        499.54 s                     60.9959
+filter        27.01 min        20.38 min                    24.5583
+map_min       935.69 s         17.48 min                   -12.1008   * 
+flank         30.26 min        943.36 s                     48.0353
+map_mean      20.13 min        931.21 s                     22.913
+map_sum       17.99 min        18.44 min                    -2.5225   *
+windows       507.84 s         84.79 s                      83.304
+map_median    16.90 min        17.81 min                    -5.36811  *
 ```
 
+So median, sum, min, and max are slower.

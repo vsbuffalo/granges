@@ -20,8 +20,8 @@ pub fn median<F: Float + Sum>(numbers: &mut [F]) -> Option<F> {
     }
     let mid = numbers.len() / 2;
     if numbers.len() % 2 == 0 {
-        numbers.select_nth_unstable_by(mid-1, |a, b| a.partial_cmp(b).unwrap());
-        let lower = numbers[mid-1];
+        numbers.select_nth_unstable_by(mid - 1, |a, b| a.partial_cmp(b).unwrap());
+        let lower = numbers[mid - 1];
         numbers.select_nth_unstable_by(mid, |a, b| a.partial_cmp(b).unwrap());
         let upper = numbers[mid];
         Some((lower + upper) / F::from(2.0).unwrap())
@@ -93,7 +93,7 @@ impl Operation {
 
 #[cfg(test)]
 mod tests {
-        use super::*;
+    use super::*;
 
     #[test]
     fn test_median_empty() {
@@ -118,5 +118,4 @@ mod tests {
         let mut numbers = vec![-3.0, -1.0, -2.0];
         assert_eq!(median(&mut numbers), Some(-2.0));
     }
-
 }

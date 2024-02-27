@@ -806,7 +806,7 @@ where
     /// See [`CombinedJoinData`] and its convenience methods, which are designed
     /// to help downstream statistical calculations that could use the number of overlapping
     /// basepairs, overlapping fraction, etc.
-    pub fn map_over_joins<F, V>(
+    pub fn map_joins<F, V>(
         mut self,
         func: F,
     ) -> Result<GRanges<VecRangesIndexed, Vec<V>>, GRangesError>
@@ -847,7 +847,7 @@ impl GRanges<VecRangesIndexed, JoinDataBothEmpty> {
     /// to help downstream statistical calculations that could use the number of overlapping
     /// basepairs, overlapping fraction, etc.
 
-    pub fn map_over_joins<F, V>(
+    pub fn map_joins<F, V>(
         mut self,
         func: F,
     ) -> Result<GRanges<VecRangesIndexed, Vec<V>>, GRangesError>
@@ -885,7 +885,7 @@ where
     /// See [`CombinedJoinDataRightEmpty`] and its convenience methods, which are designed
     /// to help downstream statistical calculations that could use the number of overlapping
     /// basepairs, overlapping fraction, etc.
-    pub fn map_over_joins<F, V>(
+    pub fn map_joins<F, V>(
         mut self,
         func: F,
     ) -> Result<GRanges<VecRangesIndexed, Vec<V>>, GRangesError>
@@ -924,7 +924,7 @@ where
     /// to help downstream statistical calculations that could use the number of overlapping
     /// basepairs, overlapping fraction, etc.
 
-    pub fn map_over_joins<F, V>(
+    pub fn map_joins<F, V>(
         mut self,
         func: F,
     ) -> Result<GRanges<VecRangesIndexed, Vec<V>>, GRangesError>
@@ -1470,7 +1470,7 @@ mod tests {
     }
 
     #[test]
-    fn test_map_over_joins() {
+    fn test_map_joins() {
         let sl = seqlens!("chr1" => 50);
         let windows: GRangesEmpty<VecRangesEmpty> =
             GRangesEmpty::from_windows(&sl, 10, None, true).unwrap();
@@ -1487,7 +1487,7 @@ mod tests {
         let joined_results = windows
             .left_overlaps(&right_gr)
             .unwrap()
-            .map_over_joins(|join_data| {
+            .map_joins(|join_data| {
                 let overlap_scores = join_data.right_data;
                 overlap_scores.iter().sum::<f64>()
             })

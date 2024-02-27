@@ -8,7 +8,7 @@ use crate::{
     create_granges_with_seqlens,
     error::GRangesError,
     granges::GRangesEmpty,
-    io::parsers::Bed5Addition,
+    io::parsers::bed::Bed5Addition,
     prelude::{GRanges, VecRangesIndexed},
     ranges::{
         coitrees::COITrees,
