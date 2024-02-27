@@ -6,27 +6,8 @@
 //! yielded as a particular parsed range type, which then can be filtered or altered in while
 //! in the iterator, using Rust's powerful [`Iterator`] trait methods.
 //!
-//! ## Parsing Iterator Design
-//!
-//! The key design elements of parsing iterators are:
-//!
-//!  1. *Iterators*: GRanges parsers are iterators, allow entries to be filtered or
-//!     manipulated on the fly using Rust's iterator methods like [`Iterator.filter`].
-//!     Additionally, the trait [`GeneralRangeRecordIterator`] adds additional convenience methods
-//!     for commmon genomic tasks, like filtering based on chromosome name.
-//!
-//!  2. *Lazy*: GRanges parsers are build on lazy parsers. Since all BED file formats are a
-//!     superset of BED3, we can parse the range components out of the first three columns and then
-//!     just store the remaining unparsed part of the line in a `String`. Other formats like GTF
-//!     are similar to BED: we can parse the range components of the file first, and parse the
-//!     remaining data later *if needed*.
-//!
-//!  3. *Permissive*: All GRanges parsers are built off of the [`TsvRecordIterator`], which reads
-//!     plaintext and gzip-compressed files and parses the record according to a specified function.
-//!     This general parser should be able to accomodate every line-based range bioinformatics format
-//!     (BED3, BED5, GTF, GFF, VCF, etc). Downstream users can implement their own specific parsers
-//!     for these variants (please feel free to contribute a parser for a commonly-used variant to
-//!     GRanges too!).
+//! Under the hood, this used the [`csv`] crate with [`serde`]. Initial parsers were handrolled,
+//! but about 20%-30% less performant.
 //!
 //! ## Parsing Iterator Item Types
 //!
@@ -43,14 +24,19 @@
 //!     the [`Option`]) with remaining *unparsed* `String` data (e.g. the remaining unparsed
 //!     columns of a VCF file).
 //!
+//!  3. [`GenomicRangeRecord<U>`], which is a range record with an *addition* set of data.
+//!     For example, the standard BED5 has a two column [`Bed5Addition`], over the standard
+//!     first three range columns. Thus, the [`Bed5Iterator`] yields
+//!     [`GenomicRangeRecord<Bed5Addition>`] types.
+//!
+//! ## Why Empty Types?
+//!
 //! Most genomic file formats can be thought of as a genomic range with some associated data,
 //! for example:
 //!
 //!  - VCF files will have information on the alleles and a vector of genotypes.
 //!
 //!  - GTF/GFF files store details about the annotated feature (e.g. name, protein ID, etc).
-//!
-//! Thus, most parsing iterators will yield this second type, [`GenomicRangeRecord<Option<String>>`].
 //!
 //! However, often empty ranges (those that do not carry any data) are useful: for example, ranges
 //! that just define genomic windows at regular widths, or masked repeat ranges. In this case, when
@@ -75,58 +61,23 @@
 //! [`GRangesEmpty`]: crate::granges::GRangesEmpty
 //!
 
+pub mod bed;
+pub mod tsv;
+pub mod utils;
+
+pub use bed::{Bed3Iterator, Bed5Addition, Bed5Iterator, BedlikeIterator};
+
 use std::collections::HashSet;
-use std::io::{BufRead, BufReader};
-use std::marker::PhantomData;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::io::BufRead;
+use std::path::PathBuf;
 
 use crate::error::GRangesError;
 use crate::io::file::InputStream;
 use crate::ranges::{GenomicRangeEmptyRecord, GenomicRangeRecord};
-use crate::traits::{GeneralRangeRecordIterator, GenomicRangeRecordUnwrappable, TsvSerialize};
+use crate::traits::{GeneralRangeRecordIterator, GenomicRangeRecordUnwrappable};
 use crate::Position;
 
-use super::tsv::TsvConfig;
-use super::BED_TSV;
-
-// FEATURE/TODO: hints? if not performance cost
-// use lazy_static::lazy_static;
-//lazy_static! {
-//    static ref POSITION_HINT: Option<String> = Some("Check that the start position column is a valid integer.".to_string());
-//}
-
-/// Get the *base* extension to help infer filetype, which ignores compression-related
-/// extensions (`.gz` and `.bgz`).
-fn get_base_extension<P: AsRef<Path>>(filepath: P) -> Option<String> {
-    let path = filepath.as_ref();
-
-    // get the filename and split by '.'
-    let parts: Vec<&str> = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("")
-        .split('.')
-        .collect();
-
-    let ignore_extensions = ["gz", "bgz"];
-
-    let has_ignore_extension = parts
-        .last()
-        .map_or(false, |ext| ignore_extensions.contains(ext));
-
-    if parts.len() > 2 && has_ignore_extension {
-        // if it's .gz, we return the second to last token,
-        // e.g. path/foo.bed.gz would return bed
-        Some(parts[parts.len() - 2].to_string())
-    } else if parts.len() > 1 {
-        // there is no .gz - return the last token.
-        Some(parts[parts.len() - 1].to_string())
-    } else {
-        // no extension found
-        None
-    }
-}
+use self::utils::get_base_extension;
 
 /// Inspect the first line to check that it looks like a valid BED-like
 /// file, i.e. the first column is there (there are no reasonable checks
@@ -282,273 +233,6 @@ impl GenomicRangesFile {
             }
             GenomicRangesFile::Unsupported => Err(GRangesError::UnsupportedGenomicRangesFileFormat),
         }
-    }
-}
-
-/// An extensible TSV parser, which uses a supplied parser function to
-/// convert a line into a [`GenomicRangeRecord<U>`], a range with generic associated
-/// data.
-pub struct TsvRecordIterator<F, R> {
-    reader: BufReader<Box<dyn std::io::Read>>,
-    num_columns: usize,
-    parser: F,
-    phantom: PhantomData<R>,
-}
-
-impl<F, R> std::fmt::Debug for TsvRecordIterator<F, R> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TsvRecordIterator").finish_non_exhaustive()
-    }
-}
-
-impl<F, R> TsvRecordIterator<F, R>
-where
-    F: Fn(&str) -> Result<R, GRangesError>,
-{
-    /// Create a new [`TsvRecordIterator`], which parses lines from the supplied
-    /// file path into [`GenomicRangeRecord<U>`] using the specified parsing function.
-    pub fn new(filepath: impl Into<PathBuf>, parser: F) -> Result<Self, GRangesError> {
-        let mut input_file = InputStream::new(filepath);
-        let _has_metadata = input_file.collect_metadata("#", None);
-        let num_columns = input_file.detect_columns("\t")?;
-        let reader = input_file.continue_reading()?;
-
-        Ok(Self {
-            reader,
-            num_columns,
-            parser,
-            phantom: std::marker::PhantomData,
-        })
-    }
-}
-
-impl<F, R> Iterator for TsvRecordIterator<F, R>
-where
-    F: Fn(&str) -> Result<R, GRangesError>,
-{
-    type Item = Result<R, GRangesError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut line = String::new();
-        match self.reader.read_line(&mut line) {
-            Ok(0) => None,
-            Ok(_) => {
-                let line = line.trim_end();
-                Some((self.parser)(line))
-            }
-            Err(e) => Some(Err(GRangesError::IOError(e))),
-        }
-    }
-}
-
-pub enum GenomicRangesIteratorVariant {
-    WithData(Box<dyn Iterator<Item = Result<GenomicRangeRecord<String>, GRangesError>>>),
-    Empty(Box<dyn Iterator<Item = Result<GenomicRangeRecord<()>, GRangesError>>>),
-}
-
-/// A lazy parser for BED3 (ranges only) files. This parses the first three columns,
-/// yielding a [`GenomicRangeRecord`] items.
-#[allow(clippy::type_complexity)]
-#[derive(Debug)]
-pub struct Bed3Iterator {
-    iter: TsvRecordIterator<
-        fn(&str) -> Result<GenomicRangeEmptyRecord, GRangesError>,
-        GenomicRangeEmptyRecord,
-    >,
-}
-
-impl Bed3Iterator {
-    /// Create a new lazy-parsing iterator over Bed-like TSV data. This parser
-    /// assumes the first three columns are the sequence name, start (0-indexed and inclusive),
-    /// and end (0-indeed and exclusive) positions.
-    pub fn new(filepath: impl Into<PathBuf>) -> Result<Self, GRangesError> {
-        let parser: fn(&str) -> Result<GenomicRangeEmptyRecord, GRangesError> = parse_bed3;
-
-        let iter = TsvRecordIterator::new(filepath, parser)?;
-
-        Ok(Self { iter })
-    }
-}
-
-impl Iterator for Bed3Iterator {
-    type Item = Result<GenomicRangeEmptyRecord, GRangesError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next()
-    }
-}
-
-/// Nucleotide strand enum type.
-#[derive(Clone, Debug)]
-pub enum Strand {
-    Forward,
-    Reverse,
-}
-
-impl TsvSerialize for Option<Strand> {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
-        match self {
-            Some(Strand::Forward) => "+".to_string(),
-            Some(Strand::Reverse) => "-".to_string(),
-            None => ".".to_string(),
-        }
-    }
-}
-
-/// The additional two BED5 columns.
-///
-/// # Fields
-/// * `name`: the feature name.
-/// * `score`: a score.
-#[derive(Clone, Debug)]
-pub struct Bed5Addition {
-    pub name: String,
-    pub score: Option<f64>,
-}
-
-//impl Selection for &Bed5Addition {
-//    fn select_by_name(&self, name: &str) -> DatumType {
-//        match name {
-//            "name" => DatumType::String(self.name.clone()),
-//            "score" => DatumType::Float64(self.score),
-//            _ => panic!("No item named '{}'", name),
-//        }
-//    }
-//}
-
-impl TsvSerialize for &Bed5Addition {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
-        format!(
-            "{}\t{}",
-            self.name,
-            self.score
-                .as_ref()
-                .map_or(config.no_value_string.clone(), |x| x.to_string())
-        )
-    }
-}
-
-impl TsvSerialize for Bed5Addition {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
-        format!(
-            "{}\t{}",
-            self.name,
-            self.score
-                .as_ref()
-                .map_or(config.no_value_string.clone(), |x| x.to_string())
-        )
-    }
-}
-
-/// The additional three BED6 columns.
-// TODO: not connectted yet
-#[derive(Clone, Debug)]
-pub struct Bed6Addition {
-    pub name: String,
-    pub score: f64,
-    pub strand: Option<Strand>,
-}
-
-/// A lazy parser for BED5 files. This parses the first three range columns, the feature name,
-/// and the score, yielding a [`GenomicRangeRecord`] will be set to `None`, since there are no remaining
-/// string columns to parse.
-///
-#[allow(clippy::type_complexity)]
-#[derive(Debug)]
-pub struct Bed5Iterator {
-    iter: TsvRecordIterator<
-        fn(&str) -> Result<GenomicRangeRecord<Bed5Addition>, GRangesError>,
-        GenomicRangeRecord<Bed5Addition>,
-    >,
-}
-
-impl Bed5Iterator {
-    /// Create a new lazy-parsing iterator over Bed-like TSV data. This parser
-    /// assumes the first three columns are the sequence name, start (0-indexed and inclusive),
-    /// and end (0-indeed and exclusive) positions.
-    pub fn new(filepath: impl Into<PathBuf>) -> Result<Self, GRangesError> {
-        let parser: fn(&str) -> Result<GenomicRangeRecord<Bed5Addition>, GRangesError> = parse_bed5;
-
-        let iter = TsvRecordIterator::new(filepath, parser)?;
-
-        Ok(Self { iter })
-    }
-}
-
-impl Iterator for Bed5Iterator {
-    type Item = Result<GenomicRangeRecord<Bed5Addition>, GRangesError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next()
-    }
-}
-
-/// A lazy parser for BED-like files. This lazily parses only the first three columns, and
-/// yields [`GenomicRangeRecord<Option<String>>`] entries. If the file is a BED3 file,
-/// the data in the [`GenomicRangeRecord`] will be set to `None`, since there are no remaining
-/// string columns to parse.
-///
-#[allow(clippy::type_complexity)]
-#[derive(Debug)]
-pub struct BedlikeIterator {
-    iter: TsvRecordIterator<
-        fn(&str) -> Result<GenomicRangeRecord<Option<String>>, GRangesError>,
-        GenomicRangeRecord<Option<String>>,
-    >,
-}
-
-impl BedlikeIterator {
-    /// Create a new lazy-parsing iterator over Bed-like TSV data. This parser
-    /// assumes the first three columns are the sequence name, start (0-indexed and inclusive),
-    /// and end (0-indeed and exclusive) positions.
-    pub fn new(filepath: impl Into<PathBuf>) -> Result<Self, GRangesError> {
-        let parser: fn(&str) -> Result<GenomicRangeRecord<Option<String>>, GRangesError> =
-            parse_bed_lazy;
-
-        let iter = TsvRecordIterator::new(filepath, parser)?;
-        Ok(Self { iter })
-    }
-
-    /// Detect the number of columns from the first entry.
-    ///
-    /// Note: this does not guard against the risk of ragged input, i.e. differing
-    /// numbers of columns per row.
-    pub fn number_columns(&self) -> usize {
-        self.iter.num_columns
-    }
-
-    pub fn is_bed3(&self) -> bool {
-        self.number_columns() == 3
-    }
-
-    /// Drop the data in each [`GenomicRangeRecord<Option<String>>`] iterator, converting it to a range-only
-    /// [`GenomicRangeRecord<()>`] iterator item.
-    // TODO: candidate for trait? the impl Iterator isn't a concrete type and can be cumbersome
-    // in terms of ergonomics. See UnwrappedRanges for an example.
-    pub fn drop_data(self) -> impl Iterator<Item = Result<GenomicRangeRecord<()>, GRangesError>> {
-        self.iter.map(|result| {
-            result
-                .map(|record| {
-                    Ok(GenomicRangeRecord::new(
-                        record.seqname,
-                        record.start,
-                        record.end,
-                        (),
-                    ))
-                })
-                .unwrap_or_else(Err) // pass through parsing errors
-        })
-    }
-}
-
-impl Iterator for BedlikeIterator {
-    type Item = Result<GenomicRangeRecord<Option<String>>, GRangesError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next()
     }
 }
 
@@ -846,181 +530,10 @@ pub fn parse_bedlike(line: &str) -> Result<(String, Position, Position, Vec<&str
     Ok((seqname, start, end, additional_columns))
 }
 
-/// Lazily parses a BED* format line into the first three columns defining the range,
-/// storing the rest as a `String`.
-///
-/// Unlike [`parse_bedlike()`], this function returns a concrete
-/// [`GenomicRangeRecord<Option<String>>`] type, not a [`Vec<String>`] of split TSV columns.
-pub fn parse_bed_lazy(line: &str) -> Result<GenomicRangeRecord<Option<String>>, GRangesError> {
-    let columns: Vec<&str> = line.splitn(4, '\t').collect();
-    if columns.len() < 3 {
-        return Err(GRangesError::Bed3TooFewColumns(
-            columns.len(),
-            line.to_string(),
-        ));
-    }
-
-    let seqname = parse_column(columns[0], line)?;
-    let start: Position = parse_column(columns[1], line)?;
-    let end: Position = parse_column(columns[2], line)?;
-
-    let data = if columns.len() > 3 {
-        Some(columns[3].to_string())
-    } else {
-        None
-    };
-
-    Ok(GenomicRangeRecord {
-        seqname,
-        start,
-        end,
-        data,
-    })
-}
-
-/// Parses a BED3 format line into the three columns defining the range.
-///
-pub fn parse_bed3(line: &str) -> Result<GenomicRangeEmptyRecord, GRangesError> {
-    let columns: Vec<&str> = line.splitn(4, '\t').collect();
-    if columns.len() < 3 {
-        return Err(GRangesError::Bed3TooFewColumns(
-            columns.len(),
-            line.to_string(),
-        ));
-    }
-
-    let seqname = parse_column(columns[0], line)?;
-    let start: Position = parse_column(columns[1], line)?;
-    let end: Position = parse_column(columns[2], line)?;
-
-    Ok(GenomicRangeEmptyRecord {
-        seqname,
-        start,
-        end,
-    })
-}
-
-#[allow(dead_code)]
-fn parse_strand(symbol: char) -> Result<Option<Strand>, GRangesError> {
-    match symbol {
-        '+' => Ok(Some(Strand::Forward)),
-        '-' => Ok(Some(Strand::Reverse)),
-        '.' => Ok(None),
-        _ => Err(GRangesError::InvalidString),
-    }
-}
-
-/// Parses a string to an `Option<T>`, where `T` implements `FromStr`.
-/// Returns `None` if the input string is a specified placeholder (e.g., "."),
-/// otherwise attempts to parse the string into `T`.
-///
-/// # Arguments
-///
-/// * `input` - The input string to parse.
-/// * `placeholder` - The placeholder string representing `None`.
-///
-/// # Returns
-///
-/// Returns `Ok(None)` if `input` is equal to `placeholder`, `Ok(Some(value))`
-/// if `input` can be parsed into `T`, or an error if parsing fails.
-pub fn parse_optional<T: FromStr>(input: &str, config: &TsvConfig) -> Result<Option<T>, T::Err> {
-    if input == config.no_value_string {
-        Ok(None)
-    } else {
-        input.parse().map(Some)
-    }
-}
-
-/// Parses a BED5 format line into the three columns defining the range, and additional
-/// columns
-///
-/// Warning: this currently does *not* properly handle converting the missing data `.`
-/// character to `None` values.
-pub fn parse_bed5(line: &str) -> Result<GenomicRangeRecord<Bed5Addition>, GRangesError> {
-    // TODO FIXME
-    let columns: Vec<&str> = line.splitn(6, '\t').collect();
-    if columns.len() < 5 {
-        return Err(GRangesError::BedTooFewColumns(
-            columns.len(),
-            5,
-            line.to_string(),
-        ));
-    }
-
-    let seqname = parse_column(columns[0], line)?;
-    let start: Position = parse_column(columns[1], line)?;
-    let end: Position = parse_column(columns[2], line)?;
-
-    let name = parse_column(columns[3], line)?;
-    let score: Option<f64> = parse_optional(columns[4], &BED_TSV)?;
-
-    let data = Bed5Addition { name, score };
-
-    Ok(GenomicRangeRecord {
-        seqname,
-        start,
-        end,
-        data,
-    })
-}
-
-// mostly for internal tests
-pub fn parse_record_with_score(
-    line: &str,
-) -> Result<GenomicRangeRecord<Option<f64>>, GRangesError> {
-    // Split the line into columns
-    let columns: Vec<&str> = line.split('\t').collect();
-    if columns.len() < 4 {
-        return Err(GRangesError::BedTooFewColumns(
-            columns.len(),
-            4,
-            line.to_string(),
-        ));
-    }
-
-    // Parse the range columns
-    let seqname: String = parse_column(columns[0], line)?;
-    let start: Position = parse_column(columns[1], line)?;
-    let end: Position = parse_column(columns[2], line)?;
-
-    // Parse the fourth column as Option<f64>
-    let score: Option<f64> = parse_optional(columns[3], &BED_TSV)?;
-
-    // Construct and return the GenomicRangeRecord with score as data
-    Ok(GenomicRangeRecord::new(seqname, start, end, score))
-}
-
-// TODO
-///// Parses a BED6 format line into the three columns defining the range, and additional
-///// columns
-/////
-//pub fn parse_bed6(line: &str) -> Result<GenomicRangeRecord<Bed5Addition>, GRangesError> {
-//    let columns: Vec<&str> = line.splitn(4, '\t').collect();
-//    if columns.len() < 3 {
-//        return Err(GRangesError::BedlikeTooFewColumns(line.to_string()));
-//    }
-//
-//    let seqname = parse_column(columns[0], line)?;
-//    let start: Position = parse_column(columns[1], line)?;
-//    let end: Position = parse_column(columns[2], line)?;
-//
-//    let name = parse_column(columns[3], line)?;
-//    // let strand: Option<Strand> = parse_strand(parse_column(columns[3], line)?)?;
-//
-//    let data = Bed5Addition { name, score };
-//
-//    Ok(GenomicRangeRecord {
-//        seqname,
-//        start,
-//        end,
-//        data,
-//    })
-//}
-
 #[cfg(test)]
 mod tests {
     use crate::io::{
-        parsers::{get_base_extension, valid_bedlike},
+        parsers::{utils::get_base_extension, valid_bedlike},
         InputStream,
     };
 

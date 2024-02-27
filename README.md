@@ -36,7 +36,7 @@ let results_gr = left_gr
     // Find overlaps
     .left_overlaps(&right_gr)?
     // Summarize overlap data
-    .map_over_joins(mean_score)?;
+    .map_joins(mean_score)?;
 ```
 
 where `mean_score()` is:

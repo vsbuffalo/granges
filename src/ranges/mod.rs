@@ -2,6 +2,7 @@
 //!
 //!
 
+use serde::Deserialize;
 use std::ops::Range;
 
 use crate::{
@@ -161,7 +162,7 @@ impl AdjustableGenericRange for RangeIndexed {
 ///
 /// This is used as a type for holding a range with associated data directly
 /// from a parser.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct GenomicRangeRecord<U> {
     pub seqname: String,
     pub start: Position,
@@ -289,7 +290,7 @@ impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<U> {
 }
 
 /// Represents a genomic range entry without data, e.g. from a BED3 parser.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct GenomicRangeEmptyRecord {
     pub seqname: String,
     pub start: Position,

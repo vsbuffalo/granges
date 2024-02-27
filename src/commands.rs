@@ -453,7 +453,7 @@ pub fn granges_map(
     let left_join_gr = left_gr.left_overlaps(&right_gr)?;
 
     // Process all the overlaps.
-    let result_gr = left_join_gr.map_over_joins(|join_data| {
+    let result_gr = left_join_gr.map_joins(|join_data| {
         // Get the "right data" -- the BED5 scores
         let mut overlap_scores: Vec<f64> = join_data
             .right_data

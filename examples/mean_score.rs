@@ -1,17 +1,19 @@
-use granges::{prelude::*, join::CombinedJoinDataLeftEmpty};
+use granges::{join::CombinedJoinDataLeftEmpty, prelude::*};
 
 // Our overlap data processing function.
 pub fn mean_score(join_data: CombinedJoinDataLeftEmpty<Option<f64>>) -> f64 {
     // Get the "right data" -- the BED5 scores.
-    let overlap_scores: Vec<f64> = join_data.right_data.into_iter()
+    let overlap_scores: Vec<f64> = join_data
+        .right_data
+        .into_iter()
         // filter out missing values ('.' in BED)
-        .filter_map(|x| x).collect();
+        .filter_map(|x| x)
+        .collect();
 
     // calculate the mean
     let score_sum: f64 = overlap_scores.iter().sum();
     score_sum / (overlap_scores.len() as f64)
 }
-
 
 fn try_main() -> Result<(), granges::error::GRangesError> {
     // Mock sequence lengths (e.g. "genome" file)
@@ -30,18 +32,17 @@ fn try_main() -> Result<(), granges::error::GRangesError> {
         // Convert to interval trees.
         .into_coitrees()?
         // Extract out just the score from the additional BED5 columns.
-        .map_data(|bed5_cols| {
-            bed5_cols.score
-        })?;
+        .map_data(|bed5_cols| bed5_cols.score)?;
 
     // Compute overlaps and combine scores into mean.
     let results_gr = left_gr
         .left_overlaps(&right_gr)?
-        .map_over_joins(mean_score)?;
+        .map_joins(mean_score)?;
 
     results_gr.to_tsv(None::<String>, &BED_TSV)?;
     Ok(())
 }
 
-fn main() { try_main().unwrap(); }
-
+fn main() {
+    try_main().unwrap();
+}

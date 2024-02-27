@@ -218,7 +218,7 @@ enum Commands {
         sort: bool,
 
         /// add an additional score columns
-        #[arg(short, long)]
+        #[arg(short = 'c', long)]
         scores: bool,
     },
 }

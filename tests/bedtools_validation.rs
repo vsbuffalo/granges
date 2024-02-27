@@ -2,8 +2,7 @@
 
 use granges::{
     commands::granges_random_bed,
-    io::parsers::parse_record_with_score,
-    prelude::{read_seqlens, GRanges, GenomicRangesFile, TsvRecordIterator},
+    prelude::{read_seqlens, BedlikeIterator, GRanges, GenomicRangesFile},
     test_utilities::{granges_binary_path, random_bed3file, random_bed5file, temp_bedfile},
 };
 use std::{
@@ -307,24 +306,26 @@ fn test_against_bedtools_map() {
 
         let genome = read_seqlens("tests_data/hg38_seqlens.tsv").unwrap();
 
-        let bedtools_iter =
-            TsvRecordIterator::new(bedtools_path.path(), parse_record_with_score).unwrap();
+        let bedtools_iter = BedlikeIterator::new(bedtools_path.path()).unwrap();
         let mut bedtools_gr = GRanges::from_iter(bedtools_iter, &genome).unwrap();
 
-        let granges_iter = TsvRecordIterator::new(
-            granges_output_file.path().to_path_buf(),
-            parse_record_with_score,
-        )
-        .unwrap();
+        let granges_iter = BedlikeIterator::new(granges_output_file.path().to_path_buf()).unwrap();
         let mut granges_gr = GRanges::from_iter(granges_iter, &genome).unwrap();
 
         let granges_data = granges_gr.take_data().unwrap();
+        let granges_data = granges_data.iter().map(|extra_cols| {
+            let score: Option<f64> = extra_cols.as_ref().unwrap().parse().ok();
+            score
+        });
         let bedtools_data = bedtools_gr.take_data().unwrap();
+        let bedtools_data = bedtools_data.iter().map(|extra_cols| {
+            let score: Option<f64> = extra_cols.as_ref().unwrap().parse().ok();
+            score
+        });
         assert_eq!(granges_data.len(), bedtools_data.len());
 
         granges_data
-            .iter()
-            .zip(bedtools_data.iter())
+            .zip(bedtools_data)
             .for_each(|(gr_val, bd_val)| match (gr_val, bd_val) {
                 (Some(gr), Some(bd)) => assert!((gr - bd).abs() < 1e-5),
                 // NOTE: for some sum operations with no data,
@@ -332,7 +333,7 @@ fn test_against_bedtools_map() {
                 // (the sum of the empty set is not NA, it's 0.0).
                 // This is a shim so tests don't stochastically break
                 // in this case.
-                (Some(n), None) if *n == 0.0 => (),
+                (Some(n), None) if n == 0.0 => (),
                 (None, None) => (),
                 _ => panic!("{:?}", (&operation, &gr_val, &bd_val)),
             });
