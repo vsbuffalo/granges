@@ -9,7 +9,7 @@ pub mod vec;
 /// These are core supported data types stored in an `enum`, to
 /// unify the types that come out of standard operations like
 /// `select()`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DatumType {
     Float32(f32),
     Float64(f64),

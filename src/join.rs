@@ -247,8 +247,6 @@ where
     where
         F: Fn(CombinedJoinDataLeftEmpty<<DR as IndexedDataContainer>::OwnedItem>) -> V,
     {
-        // TODO/OPTIMIZE: would consuming here (and analagous funcs) be better/faster?
-        // Would require a bit of a redesign.
         self.joins
             .into_iter()
             .map(|join| {

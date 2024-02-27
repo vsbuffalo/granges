@@ -13,7 +13,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-const BED_LENGTH: usize = 100_000;
+const BED_LENGTH: usize = 1_000_000;
 
 fn bench_range_adjustment(c: &mut Criterion) {
     // create the benchmark group
@@ -356,11 +356,11 @@ fn bench_map_all_operations(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    bench_filter_adjustment,
-    bench_range_adjustment,
-    bench_flank,
-    bench_windows,
+    //bench_filter_adjustment,
+    //bench_range_adjustment,
+    //bench_flank,
+    //bench_windows,
     bench_map,
-    bench_map_all_operations,
+    //bench_map_all_operations,
 );
 criterion_main!(benches);

@@ -51,8 +51,6 @@ where
 /// # Fields
 /// * `name`: the feature name.
 /// * `score`: a score.
-// TODO/RENAME: maybe since this goes against spec it should
-// be called Bed5AdditionPermissive?
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Bed5Addition {
@@ -130,7 +128,7 @@ impl TsvSerialize for Option<Strand> {
     }
 }
 
-/// Deserializes some value of type `t` with some possible missing
+/// Deserializes some value of type `T` with some possible missing
 /// character `missing_chars` into [`Option<T>`].
 pub fn deserialize_option_generic<'de, D, T>(
     deserializer: D,

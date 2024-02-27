@@ -1,6 +1,7 @@
 //! Command functions that implement each of the `granges` subcommands.
 
 use std::path::PathBuf;
+use ndarray::Array1;
 
 use crate::{
     data::{operations::Operation, DatumType},
@@ -462,10 +463,21 @@ pub fn granges_map(
             .flatten()
             .collect();
 
+        // Let's check if any of our operations require sorted data; if
+        // so it's easier to pre-sort once
+        let requires_sort = operations.iter().any(|op| op.requires_sort());
+
+        if requires_sort {
+            // floats require partial_cmp
+            overlap_scores.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        }
+
+        let score_array = Array1::from_vec(overlap_scores);
+
         // Run all operations on the scores.
         operations
             .iter()
-            .map(|operation| operation.run(&mut overlap_scores))
+            .map(|operation| operation.run(&score_array))
             .collect::<Vec<DatumType>>()
     })?;
 
