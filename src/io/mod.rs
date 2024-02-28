@@ -9,4 +9,4 @@ pub use parsers::{
     bed::Bed3Iterator, bed::Bed5Iterator, bed::BedlikeIterator, tsv::TsvRecordIterator,
     GenomicRangesFile, GenomicRangesParser,
 };
-pub use tsv::BED_TSV;
+pub use tsv::{TsvConfig, BED_TSV};

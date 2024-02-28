@@ -185,7 +185,7 @@
 //! // Write to a TSV file, using the BED TSV format standards
 //! // for missing values, etc.
 //! let tempfile = tempfile::NamedTempFile::new().unwrap();
-//! results_gr.to_tsv(Some(tempfile.path()), &BED_TSV)?;
+//! results_gr.write_to_tsv(Some(tempfile.path()), &BED_TSV)?;
 //! # Ok(())
 //! # }
 //! # fn main() { try_main().unwrap(); }
@@ -411,7 +411,10 @@ pub mod prelude {
     };
 
     pub use crate::data::DatumType;
-    pub use crate::ranges::vec::{VecRangesEmpty, VecRangesIndexed};
+    pub use crate::ranges::{
+        try_range,
+        vec::{VecRangesEmpty, VecRangesIndexed},
+    };
     pub use crate::traits::{
         AsGRangesRef, GeneralRangeRecordIterator, GenericRange, GenericRangeOperations,
         GenomicRangeRecordUnwrappable, GenomicRangesTsvSerialize, IndexedDataContainer,

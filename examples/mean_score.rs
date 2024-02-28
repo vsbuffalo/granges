@@ -35,11 +35,9 @@ fn try_main() -> Result<(), granges::error::GRangesError> {
         .map_data(|bed5_cols| bed5_cols.score)?;
 
     // Compute overlaps and combine scores into mean.
-    let results_gr = left_gr
-        .left_overlaps(&right_gr)?
-        .map_joins(mean_score)?;
+    let results_gr = left_gr.left_overlaps(&right_gr)?.map_joins(mean_score)?;
 
-    results_gr.to_tsv(None::<String>, &BED_TSV)?;
+    results_gr.write_to_tsv(None::<String>, &BED_TSV)?;
     Ok(())
 }
 

@@ -138,9 +138,9 @@ impl Index<&str> for NucleotideSequences {
     }
 }
 
-impl<'a> Sequences<'a> for NucleotideSequences {
-    type Container = &'a Nucleotides;
-    type Slice = &'a [u8];
+impl Sequences for NucleotideSequences {
+    type Container<'a> = &'a Nucleotides;
+    type Slice<'a> = &'a [u8];
 
     /// Retrieve all sequence names.
     fn seqnames(&self) -> Vec<String> {
@@ -148,7 +148,7 @@ impl<'a> Sequences<'a> for NucleotideSequences {
     }
 
     /// Retrieve the [`Nucleotides`] for a particular sequence name.
-    fn get_sequence(&'a self, seqname: &str) -> Result<Self::Container, GRangesError> {
+    fn get_sequence(&self, seqname: &str) -> Result<Self::Container<'_>, GRangesError> {
         self.data
             .get(seqname)
             .ok_or(GRangesError::MissingSequenceName(seqname.to_string()))
@@ -161,15 +161,15 @@ impl<'a> Sequences<'a> for NucleotideSequences {
     /// * `seqname`: the sequence name of the region to apply the function to.
     /// * `start`: the start position of the region to apply the function to.
     /// * `end`: the end position of the region to apply the function to.
-    fn region_apply<V, F>(
-        &'a self,
-        func: F,
+    fn region_map<V, F>(
+        &self,
+        func: &F,
         seqname: &str,
         start: Position,
         end: Position,
     ) -> Result<V, GRangesError>
     where
-        F: Fn(Self::Slice) -> V,
+        F: Fn(Self::Slice<'_>) -> V,
     {
         let seq = self.get_sequence(seqname)?;
         let range = try_range(start, end, seq.len().try_into().unwrap())?;
@@ -179,10 +179,8 @@ impl<'a> Sequences<'a> for NucleotideSequences {
 
     /// Get the length of a particular sequence.
     fn get_sequence_length(&self, seqname: &str) -> Result<Position, GRangesError> {
-        self.seqlens()
-            .get(seqname)
-            .ok_or(GRangesError::MissingSequenceName(seqname.to_string()))
-            .copied()
+        let len: Position = self.get_sequence(seqname)?.len().try_into().unwrap();
+        Ok(len)
     }
 }
 
@@ -222,6 +220,8 @@ impl LazyNucleotideSequences {
                     .as_ref()
                     .map_or(true, |seqnames| seqnames.contains(&name))
                 {
+                    #[allow(clippy::useless_conversion)] // following clippy's suggestion causes
+                    // compile time error
                     Some((name, r.length().try_into().unwrap()))
                 } else {
                     None
@@ -274,9 +274,9 @@ impl LazyNucleotideSequences {
     }
 }
 
-impl<'a> Sequences<'a> for LazyNucleotideSequences {
-    type Container = Ref<'a, Nucleotides>;
-    type Slice = &'a [u8];
+impl Sequences for LazyNucleotideSequences {
+    type Container<'a> = Ref<'a, Nucleotides>;
+    type Slice<'a> = &'a [u8];
 
     /// Retrieve all sequence names.
     fn seqnames(&self) -> Vec<String> {
@@ -284,7 +284,7 @@ impl<'a> Sequences<'a> for LazyNucleotideSequences {
     }
 
     /// Retrieve the [`Nucleotides`] for a particular sequence name.
-    fn get_sequence(&'a self, seqname: &str) -> Result<Self::Container, GRangesError> {
+    fn get_sequence(&self, seqname: &str) -> Result<Self::Container<'_>, GRangesError> {
         self.lazy.get_data(&seqname.to_string())
     }
 
@@ -295,9 +295,9 @@ impl<'a> Sequences<'a> for LazyNucleotideSequences {
     /// * `seqname`: the sequence name of the region to apply the function to.
     /// * `start`: the start position of the region to apply the function to.
     /// * `end`: the end position of the region to apply the function to.
-    fn region_apply<V, F>(
-        &'a self,
-        func: F,
+    fn region_map<V, F>(
+        &self,
+        func: &F,
         seqname: &str,
         start: Position,
         end: Position,
@@ -401,79 +401,81 @@ pub fn gc_content_strict(seq: &[u8]) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{LazyNucleotideSequences, NucleotideSequences};
-    use crate::{sequences::nucleotide::Nucleotides, traits::Sequences};
+    use super::{gc_content_strict, LazyNucleotideSequences, NucleotideSequences};
+    use crate::{granges::GRangesEmpty, sequences::nucleotide::Nucleotides, traits::Sequences};
 
     #[test]
     fn test_nucleotide_sequences() {
-        let ref_file = "tests_data/sequences/small.fa.gz";
+        let ref_file = "tests_data/sequences/test_case_01.fa.gz";
         let reference =
             NucleotideSequences::from_fasta(ref_file, None).expect("could not load reference");
 
         assert_eq!(
-            *reference.get_sequence("sequence-1").unwrap(),
-            Nucleotides::from("ATACGATAACCAGTAACAG")
+            *reference.get_sequence("chr1").unwrap(),
+            Nucleotides::from("TTCACTACTATTAGTACTCACGGCGCAATA")
         );
 
         assert_eq!(reference.seqnames().len(), 2);
-        assert_eq!(*reference.seqlens().get("sequence-1").unwrap(), 19);
+        assert_eq!(*reference.seqlens().get("chr1").unwrap(), 30);
     }
 
     #[test]
     fn test_lazyload() {
-        let ref_file = "tests_data/sequences/small.fa.gz";
+        let ref_file = "tests_data/sequences/test_case_01.fa.gz";
         let reference =
             LazyNucleotideSequences::new(ref_file, None).expect("could not load reference");
 
-        assert_eq!(*reference.seqlens.get("sequence-1").unwrap(), 19);
-        assert_eq!(*reference.seqlens.get("sequence-2").unwrap(), 28);
+        assert_eq!(*reference.seqlens.get("chr1").unwrap(), 30);
+        assert_eq!(*reference.seqlens.get("chr2").unwrap(), 100);
 
         let seqlens = reference.seqlens();
 
         // Test #1: nothing should be loaded yet
-        assert_eq!(reference.is_loaded("sequence-1"), false);
-        assert_eq!(reference.is_loaded("sequence-2"), false);
+        assert_eq!(reference.is_loaded("chr1"), false);
+        assert_eq!(reference.is_loaded("chr2"), false);
 
         // Test #2: validate the range summary by getting whole
         // chromosome sequence length through the apply funcs
-        let seq1_len = seqlens.get("sequence-1").unwrap();
+        let seq1_len = seqlens.get("chr1").unwrap();
 
         fn get_len(seq: &[u8]) -> usize {
             seq.len()
         }
 
         let total_len = reference
-            .region_apply(get_len, "sequence-1", 0, *seq1_len)
+            .region_map(&get_len, "chr1", 0, *seq1_len)
             .unwrap();
         assert_eq!(total_len, *seq1_len as usize);
 
         // Test #3: make sure the previous sequence is loaded still
-        assert_eq!(reference.is_loaded("sequence-1"), true);
+        assert_eq!(reference.is_loaded("chr1"), true);
 
         // Test #4: make sure the next sequence is not loaded yet.
-        assert_eq!(reference.is_loaded("sequence-2"), false);
+        assert_eq!(reference.is_loaded("chr2"), false);
 
         // Test #5: load the next sequence
-        let chr2_len = seqlens.get("sequence-2").unwrap();
+        let chr2_len = seqlens.get("chr2").unwrap();
         let total_len = reference
-            .region_apply(get_len, "sequence-2", 0, *chr2_len)
+            .region_map(&get_len, "chr2", 0, *chr2_len)
             .unwrap();
         assert_eq!(total_len, *chr2_len as usize);
         dbg!(&reference);
-        assert!(reference.is_loaded("sequence-2"));
+        assert!(reference.is_loaded("chr2"));
     }
 
     #[test]
     fn lazy_region_apply_slice() {
-        let ref_file = "tests_data/sequences/small.fa.gz";
+        let ref_file = "tests_data/sequences/test_case_01.fa.gz";
         let reference =
             LazyNucleotideSequences::new(ref_file, None).expect("could not load reference");
 
         #[allow(non_snake_case)]
+        // pycode for comparison
+        // len([l for l in 'TTCACTACTATTAGTACTCACGGCGCAATA'[3:10] if l == 'C'])
         let total_Cs = reference
-            .region_apply(
-                |seq| seq.iter().filter(|c| **c == b'C').count(),
-                "sequence-1",
+            .region_map(
+                &|seq| seq.iter().filter(|c| **c == b'C').count(),
+                "chr1",
                 3,
                 10,
             )
@@ -481,15 +483,68 @@ mod tests {
         assert_eq!(total_Cs, 2);
 
         #[allow(non_snake_case)]
+        // pycode for comparison
+        // len([l for l in 'TTCACTACTATTAGTACTCACGGCGCAATA'[3:10] if l == 'A'])
         let total_As = reference
-            .region_apply(
-                |seq| seq.iter().filter(|c| **c == b'A').count(),
-                "sequence-1",
+            .region_map(
+                &|seq| seq.iter().filter(|c| **c == b'A').count(),
+                "chr1",
                 3,
                 10,
             )
             .unwrap();
         assert_eq!(total_As, 3);
+    }
+
+    #[test]
+    fn test_map_into_granges() {
+        let ref_file = "tests_data/sequences/test_case_01.fa.gz";
+        let reference =
+            LazyNucleotideSequences::new(ref_file, None).expect("could not load reference");
+
+        let seqlens = reference.seqlens();
+
+        let windows = GRangesEmpty::from_windows(&seqlens, 10, None, false).unwrap();
+
+        let make_string = |seq: &[u8]| String::from_utf8(seq.to_vec()).unwrap();
+
+        // our test: get subsequences (as Strings), with *no step*, and reconstruct the
+        // original sequence
+        let seqs_windows = reference
+            .region_map_into_granges(&windows, &make_string)
+            .unwrap();
+        let subseqs = seqs_windows.data_refs_by_seqname().unwrap();
+        let subseqs_chr1 = subseqs.get("chr1").unwrap();
+        let chr1_reconstructed: Nucleotides = subseqs_chr1
+            .iter()
+            .map(AsRef::as_ref)
+            .collect::<Vec<&str>>()
+            .join("")
+            .into();
+        let chr1_seq = reference.get_sequence("chr1").unwrap();
+        assert_eq!(chr1_reconstructed, *chr1_seq);
+    }
+
+    #[test]
+    fn test_map_into_granges_gc() {
+        let ref_file = "tests_data/sequences/test_case_01.fa.gz";
+        let reference =
+            LazyNucleotideSequences::new(ref_file, None).expect("could not load reference");
+
+        let seqlens = reference.seqlens();
+
+        let windows = GRangesEmpty::from_windows(&seqlens, 10, Some(5), false).unwrap();
+
+        // our test: calc GC content
+        let gc_windows = reference
+            .region_map_into_granges(&windows, &gc_content_strict)
+            .unwrap();
+        let gc = gc_windows.data_by_seqname().unwrap();
+        // TODO: double check? calc'd with help from py but should hand calc.
+        assert_eq!(
+            gc.get("chr1").unwrap().to_vec(),
+            vec![0.3, 0.2, 0.3, 0.7, 0.6, 0.2]
+        );
     }
 
     #[cfg(test)]

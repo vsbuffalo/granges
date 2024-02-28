@@ -73,7 +73,8 @@ impl<R: AdjustableGenericRange> VecRanges<R> {
     }
 }
 
-impl<R: Clone> RangeContainer for VecRanges<R> {
+impl<R: GenericRange> RangeContainer for VecRanges<R> {
+    type InternalRangeType = R;
     fn len(&self) -> usize {
         self.ranges.len()
     }

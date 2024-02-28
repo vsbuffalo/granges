@@ -9,11 +9,11 @@ use genomap::GenomeMap;
 use indexmap::IndexMap;
 #[cfg(feature = "ndarray")]
 use ndarray::{s, Array1, Array2, ArrayView1, ArrayView2};
-use ndarray_npy::ReadableElement;
 use std::path::PathBuf;
 
 use super::lazy::LazyLoader;
 use crate::error::GRangesError;
+use crate::ranges::try_range;
 use crate::traits::Sequences;
 use crate::Position;
 
@@ -57,15 +57,19 @@ impl<T> NumericSequences1<T> {
     }
 }
 
-impl<'a, T: 'a> Sequences<'a> for NumericSequences1<T> {
-    type Container = &'a Array1<T>;
-    type Slice = ArrayView1<'a, T>;
+// TODO/NEEDS_TEST
+impl<T> Sequences for NumericSequences1<T>
+where
+    T: Copy + Default + Sized + 'static, // f64-like traits
+{
+    type Container<'a> = &'a Array1<T>;
+    type Slice<'a> = ArrayView1<'a, T>;
 
     fn seqnames(&self) -> Vec<String> {
         self.data.names()
     }
 
-    fn get_sequence(&'a self, seqname: &str) -> Result<Self::Container, GRangesError> {
+    fn get_sequence(&self, seqname: &str) -> Result<Self::Container<'_>, GRangesError> {
         let seq = self
             .data
             .get(seqname)
@@ -77,20 +81,19 @@ impl<'a, T: 'a> Sequences<'a> for NumericSequences1<T> {
     /// range.
     ///
     /// # Arguments
-    fn region_apply<V, F>(
-        &'a self,
-        func: F,
+    fn region_map<V, F>(
+        &self,
+        func: &F,
         seqname: &str,
         start: Position,
         end: Position,
     ) -> Result<V, GRangesError>
     where
-        F: for<'b> Fn(Self::Slice) -> V,
+        F: for<'b> Fn(Self::Slice<'b>) -> V,
     {
         let seq = self.get_sequence(seqname)?;
-        let start_usize: usize = start.try_into().unwrap();
-        let end_usize: usize = end.try_into().unwrap();
-        let view = seq.slice(s![start_usize..end_usize]);
+        let range = try_range(start, end, seq.len().try_into().unwrap())?;
+        let view = seq.slice(s![range]);
         Ok(func(view))
     }
 
@@ -127,9 +130,12 @@ impl<T> NumericSequences2<T> {
     }
 }
 
-impl<'a, T: 'a> Sequences<'a> for NumericSequences2<T> {
-    type Container = &'a Array2<T>;
-    type Slice = ArrayView2<'a, T>;
+impl<T> Sequences for NumericSequences2<T>
+where
+    T: Copy + Default + Sized + 'static, // f64-like traits
+{
+    type Container<'a> = &'a Array2<T>;
+    type Slice<'a> = ArrayView2<'a, T>;
 
     /// Retrieves the names of all sequences stored in the container.
     ///
@@ -174,7 +180,7 @@ impl<'a, T: 'a> Sequences<'a> for NumericSequences2<T> {
     /// let numeric_seq = NumericSequences1::new(data);
     /// let sequence = numeric_seq.get_sequence("chr1").unwrap();
     /// ```
-    fn get_sequence(&'a self, seqname: &str) -> Result<Self::Container, GRangesError> {
+    fn get_sequence(&self, seqname: &str) -> Result<Self::Container<'_>, GRangesError> {
         let seq = self
             .data
             .get(seqname)
@@ -201,31 +207,32 @@ impl<'a, T: 'a> Sequences<'a> for NumericSequences2<T> {
     /// use crate::granges::traits::Sequences;
     /// use granges::sequences::numeric::NumericSequences1;
     /// use granges::test_utilities::random_array1_sequences;
+    /// use ndarray::ArrayView1;
     ///
     ///
     /// let mut data = random_array1_sequences(100);
     /// let numeric_seq = NumericSequences1::new(data);
-    /// let result = numeric_seq.region_apply(
-    ///     |view| view.sum(),
+    /// let result = numeric_seq.region_map(
+    ///     &|view: ArrayView1<'_, f64> | view.sum(),
     ///     "chr1",
     ///     0,
     ///     10
     /// ).unwrap();
     /// ```
-    fn region_apply<V, F>(
-        &'a self,
-        func: F,
+    fn region_map<V, F>(
+        &self,
+        func: &F,
         seqname: &str,
         start: Position,
         end: Position,
     ) -> Result<V, GRangesError>
     where
-        F: for<'b> Fn(Self::Slice) -> V,
+        F: for<'b> Fn(Self::Slice<'_>) -> V,
     {
         let seq = self.get_sequence(seqname)?;
-        let start_usize: usize = start.try_into().unwrap();
-        let end_usize: usize = end.try_into().unwrap();
-        let view = seq.slice(s![start_usize..end_usize, ..]);
+        let range = try_range(start, end, seq.len().try_into().unwrap())?;
+        let seq = self.get_sequence(seqname)?;
+        let view = seq.slice(s![range, ..]);
         Ok(func(view))
     }
 
@@ -261,18 +268,12 @@ impl<'a, T: 'a> Sequences<'a> for NumericSequences2<T> {
 }
 
 /// A lazy-loaded two-dimensional generic numeric per-basepair container.
-pub struct LazyNumericSequences2<T>
-where
-    T: std::fmt::Debug,
-{
+pub struct LazyNumericSequences2<T: std::fmt::Debug> {
     seqlens: IndexMap<String, Position>,
     lazy: LazyLoader<Option<()>, Array2<T>, String>,
 }
 
-impl<T> LazyNumericSequences2<T>
-where
-    T: ReadableElement + std::fmt::Debug,
-{
+impl<T: std::fmt::Debug> LazyNumericSequences2<T> {
     /// Create a link to an out-of-memory per-basepair [`Array2<T>`] sequence data container.
     ///
     /// For `.npy` files, use [`ndarray_npy::read_npy`] for the `loader`.
@@ -301,12 +302,12 @@ where
     }
 }
 
-impl<'a, T: 'a> Sequences<'a> for LazyNumericSequences2<T>
+impl<T> Sequences for LazyNumericSequences2<T>
 where
-    T: std::fmt::Debug,
+    T: Copy + Default + Sized + 'static + std::fmt::Debug, // f64-like traits
 {
-    type Container = Ref<'a, Array2<T>>;
-    type Slice = ArrayView2<'a, T>;
+    type Container<'a> = Ref<'a, Array2<T>>;
+    type Slice<'a> = ArrayView2<'a, T>;
 
     /// Retrieves the names of all sequences stored in the container.
     ///
@@ -329,7 +330,7 @@ where
     /// A result containing a reference to the sequence data (`Array1<T>`) on success,
     /// or a `GRangesError` on failure.
     ///
-    fn get_sequence(&'a self, seqname: &str) -> Result<Self::Container, GRangesError> {
+    fn get_sequence(&self, seqname: &str) -> Result<Self::Container<'_>, GRangesError> {
         self.lazy.get_data(&seqname.to_string())
     }
 
@@ -346,9 +347,9 @@ where
     ///
     /// A result containing the value returned by the function `func`, or a `GRangesError` on failure.
     ///
-    fn region_apply<V, F>(
-        &'a self,
-        func: F,
+    fn region_map<V, F>(
+        &self,
+        func: &F,
         seqname: &str,
         start: Position,
         end: Position,
@@ -357,9 +358,8 @@ where
         F: for<'b> Fn(ArrayView2<'b, T>) -> V,
     {
         let seq = self.get_sequence(seqname)?;
-        let start_usize: usize = start.try_into().unwrap();
-        let end_usize: usize = end.try_into().unwrap();
-        let view = seq.slice(s![start_usize..end_usize, ..]);
+        let range = try_range(start, end, seq.len().try_into().unwrap())?;
+        let view = seq.slice(s![range, ..]);
         let value = func(view);
         Ok(value)
     }

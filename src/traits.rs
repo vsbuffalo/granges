@@ -14,6 +14,7 @@ use crate::{
         tsv::TsvConfig,
     },
     join::LeftGroupedJoin,
+    prelude::VecRangesIndexed,
     ranges::GenomicRangeRecord,
     Position,
 };
@@ -34,6 +35,12 @@ pub trait AsGRangesRef<'a, C, T> {
 /// The [`LeftOverlaps`] trait provides compile time polymorphic behavior
 /// over its associated [`LeftOverlaps::Output`] type and its `Right`
 /// generic type.
+///
+/// # Errors
+/// This needs to return [`Result`] because:
+///  - [`GRanges::push_range_with_join()`], etc could fail, due to an invalid
+///     range, chromosome name, etc.
+///  - Taking an empty data container.
 pub trait LeftOverlaps<'a, Right> {
     type Output;
 
@@ -44,7 +51,7 @@ pub trait LeftOverlaps<'a, Right> {
 /// object, for some mix of generic types, to a TSV file.
 pub trait GenomicRangesTsvSerialize<'a, C: RangeContainer> {
     /// Output the TSV version of this [`GRanges`] object.
-    fn to_tsv(
+    fn write_to_tsv(
         &'a self,
         output: Option<impl Into<PathBuf>>,
         config: &TsvConfig,
@@ -58,6 +65,9 @@ pub trait GenericRange: Clone {
     fn index(&self) -> Option<usize>;
     fn width(&self) -> Position {
         self.end() - self.start()
+    }
+    fn midpoint(&self) -> Position {
+        (self.start() + self.end()) / 2
     }
     /// Calculate how many basepairs overlap this range and other.
     fn overlap_width<R: GenericRange>(&self, other: &R) -> Position {
@@ -151,6 +161,7 @@ pub trait AdjustableGenericRange: GenericRange {
 /// [`VecRanges<R>`]: crate::ranges::vec::VecRanges
 /// [`COITrees`]: crate::ranges::coitrees::COITrees
 pub trait RangeContainer {
+    type InternalRangeType; // the internal stored range type
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
@@ -195,7 +206,7 @@ where
     Self: RangeContainer,
     <Self as IterableRangeContainer>::RangeType: GenericRange,
 {
-    type RangeType: GenericRange;
+    type RangeType: GenericRange; // the iterator range type
     fn iter_ranges(&self) -> Box<dyn Iterator<Item = Self::RangeType> + '_>;
 }
 
@@ -258,30 +269,44 @@ pub trait IndexedDataContainer: DataContainer {
 /// The Sequences trait defines generic functionality for
 /// per-basepair data, e.g. nucleotide sequences or some
 /// per-basepair numeric score.
-pub trait Sequences<'a> {
-    type Container: 'a;
-    type Slice;
+pub trait Sequences {
+    type Container<'a>: 'a
+    where
+        Self: 'a;
+    type Slice<'a>;
 
     fn seqnames(&self) -> Vec<String>;
-    fn get_sequence(&'a self, seqname: &str) -> Result<Self::Container, GRangesError>;
+    fn get_sequence(&self, seqname: &str) -> Result<Self::Container<'_>, GRangesError>;
     fn get_sequence_length(&self, seqname: &str) -> Result<Position, GRangesError>;
 
-    /// Evaluate a function on a [`Sequences::Slice`] of a sequence.
+    /// Apply a function on a [`Sequences::Slice`] of a sequence.
     ///
     /// # Arguments
     /// * `func` - a function that takes a `Self::Slice` and returns a [`Result<V, GRangesError>`]
     /// * `seqname` - sequence name.
     /// * `start` - a [`Position`] start position.
     /// * `end` - a [`Position`] *inclusive* end position.
-    fn region_apply<V, F>(
-        &'a self,
-        func: F,
+    ///
+    /// If you're implementing this trait method, it *must* being with:
+    ///
+    /// ```no_run
+    /// use granges::prelude::try_range;
+    /// // let seq = self.get_sequence(seqname)?; // e.g. this normally
+    /// let seq = "GATAGAGAGTAGAGTA";
+    /// let range = try_range(0, 10, seq.len().try_into().unwrap()).unwrap();
+    /// ```
+    ///
+    /// to validate the range and to avoid panics.
+    ///
+    fn region_map<V, F>(
+        &self,
+        func: &F,
         seqname: &str,
         start: Position,
         end: Position,
     ) -> Result<V, GRangesError>
     where
-        F: Fn(<Self as Sequences>::Slice) -> V;
+        F: Fn(<Self as Sequences>::Slice<'_>) -> V;
 
     fn seqlens(&self) -> Result<IndexMap<String, Position>, GRangesError> {
         let mut seqlens = IndexMap::new();
@@ -290,6 +315,34 @@ pub trait Sequences<'a> {
             seqlens.insert(seqname, seqlen);
         }
         Ok(seqlens)
+    }
+
+    /// Create a new [`GRanges<C, Vec<V>>`] by apply the function `func` on
+    /// the genomic ranges from `granges`.
+    ///
+    /// # Arguments
+    fn region_map_into_granges<'b, C, F, V, T: 'b>(
+        &self,
+        granges: &'b impl AsGRangesRef<'b, C, T>,
+        func: &F,
+    ) -> Result<GRanges<VecRangesIndexed, Vec<V>>, GRangesError>
+    where
+        V: Clone,
+        C: IterableRangeContainer + 'b,
+        F: Fn(<Self as Sequences>::Slice<'_>) -> V,
+    {
+        let granges_ref = granges.as_granges_ref();
+        let seqlens = &granges_ref.seqlens().clone();
+        let mut gr: GRanges<VecRangesIndexed, Vec<V>> = GRanges::new_vec(seqlens);
+        for (seqname, ranges) in granges_ref.ranges.iter() {
+            // unwrap should be safe, since seqname is produced from ranges iterator.
+            for range in ranges.iter_ranges() {
+                let (start, end) = (range.start(), range.end());
+                let value = self.region_map(&func, seqname, start, end)?;
+                gr.push_range(seqname, start, end, value.clone())?;
+            }
+        }
+        Ok(gr)
     }
 }
 

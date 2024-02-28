@@ -13,7 +13,10 @@ use std::{
     process::{Command, Stdio},
 };
 
+#[cfg(not(feature = "bench-big"))]
 const BED_LENGTH: usize = 100_000;
+#[cfg(feature = "bench-big")]
+const BED_LENGTH: usize = 1_000_000;
 
 fn bench_range_adjustment(c: &mut Criterion) {
     // create the benchmark group
@@ -229,7 +232,7 @@ fn bench_map(c: &mut Criterion) {
         let mut group = c.benchmark_group(format!("map_{}", operation).to_string());
 
         // configure the sample size for the group
-        group.sample_size(10);
+        group.sample_size(100);
         group.bench_function("bedtools_map", |b| {
             b.iter(|| {
                 let bedtools_output_file = File::create(&bedtools_path).unwrap();

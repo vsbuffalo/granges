@@ -201,6 +201,9 @@ pub fn random_bed5file(length: usize) -> NamedTempFile {
 
 /// Range test case #1
 ///
+/// This also has a corresponding reference sequence
+/// test file in: `tests_data/sequences/test_case_01.fa.gz`
+///
 /// Ranges:
 ///   - chr1:
 ///      (0, 5, Some(1.1))
@@ -213,6 +216,7 @@ pub fn random_bed5file(length: usize) -> NamedTempFile {
 /// Seqlens: { "chr1" => 30, "chr2" => 100 }
 ///
 /// Sum of all elements: 24.1
+///
 pub fn granges_test_case_01() -> GRanges<VecRangesIndexed, Vec<f64>> {
     create_granges_with_seqlens!(VecRangesIndexed, Vec<f64>, {
         "chr1" => [(0, 5, 1.1), (4, 7, 8.1), (10, 17, 10.1)],

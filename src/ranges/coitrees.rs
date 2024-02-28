@@ -1,6 +1,6 @@
 //! The [`COITrees<M>`] type.
 //!
-//! This wraps the functionality og the [`coitrees`] library by Daniel C. Jones.
+//! This wraps the functionality on the [`coitrees`] library by Daniel C. Jones.
 //!
 use coitrees::{BasicCOITree, GenericInterval, Interval, IntervalNode, IntervalTree};
 
@@ -83,7 +83,7 @@ impl<R: Clone + GenericInterval<M>, M: Clone> From<VecRanges<R>> for COITrees<M>
     }
 }
 
-/// Convert a [`COITrees`] range container to a [`VecRanges`] range container.
+/// Convert a [`COITreesIndexed`] range container to a [`VecRanges`] range container.
 impl From<COITrees<usize>> for VecRanges<RangeIndexed> {
     fn from(value: COITrees<usize>) -> Self {
         let length = value.length;
@@ -95,8 +95,23 @@ impl From<COITrees<usize>> for VecRanges<RangeIndexed> {
     }
 }
 
+/// Convert a [`COITreesEmpty`] range container to a [`VecRangesEmpty`] range container.
+///
+///[`VecRangesEmpty`]: crate::ranges::vec::VecRangesEmpty
+impl From<COITrees<()>> for VecRanges<RangeEmpty> {
+    fn from(value: COITrees<()>) -> Self {
+        let length = value.length;
+        let mut ranges: VecRanges<RangeEmpty> = VecRanges::new(length);
+        for interval in value.ranges.iter() {
+            ranges.push_range(interval.into());
+        }
+        ranges
+    }
+}
+
 /// [`RangeContainer`] trait implementations.
-impl<R: Clone> RangeContainer for COITrees<R> {
+impl<M: Clone> RangeContainer for COITrees<M> {
+    type InternalRangeType = IntervalNode<M, usize>;
     fn len(&self) -> usize {
         self.ranges.len()
     }

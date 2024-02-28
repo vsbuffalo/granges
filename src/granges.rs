@@ -74,6 +74,83 @@ pub struct GRanges<C, T> {
 #[derive(Clone, Debug)]
 pub struct GRangesEmpty<C>(GRanges<C, ()>);
 
+impl<C, T> GRanges<C, T>
+where
+    C: RangeContainer,
+{
+    /// Get the total number of ranges.
+    pub fn len(&self) -> usize {
+        self.ranges.values().map(|ranges| ranges.len()).sum()
+    }
+
+    /// Return whether the [`GRanges`] object is empty (contains no ranges).
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Get the raw range container.
+    pub fn get_ranges(&self, seqname: &str) -> Option<&C> {
+        self.ranges.get(seqname)
+    }
+
+    /// Get the sequence names.
+    pub fn seqnames(&self) -> Vec<String> {
+        self.ranges.names()
+    }
+
+    /// Get the sequences lengths.
+    pub fn seqlens(&self) -> IndexMap<String, Position> {
+        let seqlens = self
+            .ranges
+            .iter()
+            .map(|(seqname, ranges)| (seqname.to_string(), ranges.sequence_length()))
+            .collect();
+        seqlens
+    }
+
+    /// Get a reference to the data container.
+    pub fn data(&self) -> Option<&T> {
+        self.data.as_ref()
+    }
+
+    /// Take the data out of this [`GRanges`] object.
+    // NOTE: I have considered removing the Result here.
+    //
+    // This refactor does not seem worth it. There are good reasons in related
+    // functions to keep [`Result`] there, e.g. range pushing methods
+    // could hit invalid ranges or chromosome names (user-time, non-dev issue).
+    // Even though this is unlikely to raise an error in proper use, there is
+    // no real benefit to removing the non-happy path here.
+    pub fn take_data(&mut self) -> Result<T, GRangesError> {
+        std::mem::take(&mut self.data).ok_or(GRangesError::NoDataContainer)
+    }
+
+    /// Take the ranges out of this [`GRanges`] object.
+    pub fn take_ranges(&mut self) -> GenomeMap<C> {
+        std::mem::take(&mut self.ranges)
+    }
+
+    pub fn take_both(&mut self) -> Result<(GenomeMap<C>, T), GRangesError> {
+        let data = std::mem::take(&mut self.data).ok_or(GRangesError::NoDataContainer)?;
+        let ranges = std::mem::take(&mut self.ranges);
+        Ok((ranges, data))
+    }
+}
+
+impl<C, T> GRanges<C, T>
+where
+    C: RangeContainer + Clone,
+{
+    /// Create a new [`GRanges`] object by cloning the ranges of this one,
+    /// and associating the supplied data with it (this consumes the data).
+    pub fn clone_with_data<D>(&self, data: Option<D>) -> GRanges<C, D> {
+        GRanges {
+            ranges: self.ranges.clone(),
+            data,
+        }
+    }
+}
+
 impl<C> GRangesEmpty<C>
 where
     C: RangeContainer,
@@ -135,51 +212,6 @@ impl<'a, C, T> AsGRangesRef<'a, C, T> for GRanges<C, T> {
     }
 }
 
-impl<C, T> GRanges<C, T>
-where
-    C: RangeContainer,
-{
-    /// Get the total number of ranges.
-    pub fn len(&self) -> usize {
-        self.ranges.values().map(|ranges| ranges.len()).sum()
-    }
-
-    /// Return whether the [`GRanges`] object is empty (contains no ranges).
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Get the raw range container.
-    pub fn get_ranges(&self, seqname: &str) -> Option<&C> {
-        self.ranges.get(seqname)
-    }
-
-    /// Get the sequence names.
-    pub fn seqnames(&self) -> Vec<String> {
-        self.ranges.names()
-    }
-
-    /// Get the sequences lengths.
-    pub fn seqlens(&self) -> IndexMap<String, Position> {
-        let seqlens = self
-            .ranges
-            .iter()
-            .map(|(seqname, ranges)| (seqname.to_string(), ranges.sequence_length()))
-            .collect();
-        seqlens
-    }
-
-    /// Take the data out of this [`GRanges`] object.
-    // NODE/TODO?: this is used a lot -- using .expect()
-    // reduce Results a lot.
-    pub fn take_data(&mut self) -> Result<T, GRangesError> {
-        std::mem::take(&mut self.data).ok_or(GRangesError::NoDataContainer)
-    }
-    pub fn take_ranges(&mut self) -> GenomeMap<C> {
-        std::mem::take(&mut self.ranges)
-    }
-}
-
 impl<'a, T> GenomicRangesTsvSerialize<'a, VecRangesIndexed> for GRanges<VecRangesIndexed, T>
 where
     T: IndexedDataContainer + 'a,
@@ -193,7 +225,7 @@ where
     /// * `output`: either `None` (for standard out) or file path. If the filepath
     ///             ends in `.gz`, the output will be gzip-compressed.
     /// * `config`: a [`TsvConfig`], which contains the TSV output settings.
-    fn to_tsv(
+    fn write_to_tsv(
         &'a self,
         output: Option<impl Into<PathBuf>>,
         config: &TsvConfig,
@@ -222,7 +254,7 @@ impl<'a, R: IterableRangeContainer> GenomicRangesTsvSerialize<'a, R> for GRanges
     /// # Arguments
     /// * `output`: either `None` (for standard out) or file path.
     /// * `config`: a [`TsvConfig`], which contains the TSV output settings.
-    fn to_tsv(
+    fn write_to_tsv(
         &'a self,
         output: Option<impl Into<PathBuf>>,
         config: &TsvConfig,
@@ -283,6 +315,117 @@ impl<R: AdjustableGenericRange, T> GRanges<VecRanges<R>, T> {
             .values_mut()
             .for_each(|ranges| ranges.adjust_ranges(start_delta, end_delta));
         self
+    }
+}
+
+impl<C: IterableRangeContainer, T> GRanges<C, T>
+where
+    C: IterableRangeContainer<RangeType = RangeIndexed>,
+{
+    /// Consume the current [`GRanges`] into a new [`GRanges`].
+    ///
+    /// This will change all ranges to [`RangeEmpty`], since
+    /// indices are now invalid.
+    ///
+    /// Note the converse operation, going from a [`GRangesEmpty`]
+    /// to a [`GRanges<C, ()>`] can be done with `GRangesEmpty::into()`.
+    pub fn into_granges_empty(self) -> Result<GRangesEmpty<VecRangesEmpty>, GRangesError> {
+        let seqlens = self.seqlens();
+        let mut ranges = GenomeMap::new();
+        for (seqname, ranges_indexed) in self.ranges.iter() {
+            // unwrap should be safe, since seqname is produced from ranges iterator.
+            let seqlen = seqlens.get(seqname).unwrap();
+            let mut ranges_empty = VecRangesEmpty::new(*seqlen);
+            for range in ranges_indexed.iter_ranges() {
+                ranges_empty.push_range(range.into());
+            }
+            ranges.insert(seqname, ranges_empty)?;
+        }
+        Ok(GRangesEmpty(GRanges { ranges, data: None }))
+    }
+}
+
+impl<C: IterableRangeContainer, T> GRanges<C, T>
+where
+    <C as IterableRangeContainer>::RangeType: GenericRange,
+{
+    /// Retrieve all midpoints.
+    ///
+    /// These are calculated as (start + end)/2 in [`Position`],
+    /// which will truncate them.
+    pub fn midpoints(&self) -> Result<GenomeMap<Vec<Position>>, GRangesError> {
+        let mut all_midpoints = GenomeMap::new();
+        for (seqname, ranges) in self.ranges.iter() {
+            // unwrap should be safe, since seqname is produced from ranges iterator.
+            let mut midpoints = Vec::new();
+            for range in ranges.iter_ranges() {
+                midpoints.push(range.midpoint());
+            }
+            all_midpoints.insert(seqname, midpoints)?;
+        }
+        Ok(all_midpoints)
+    }
+}
+
+impl<C, T> GRanges<C, T>
+where
+    C: IterableRangeContainer<RangeType = RangeIndexed>,
+{
+    /// Get the indices of all ranges, putting them in a new
+    /// [`GenomeMap<Vec<usize>>`].
+    pub fn data_indices(&self) -> Result<GenomeMap<Vec<usize>>, GRangesError> {
+        let mut all_indices = GenomeMap::new();
+        for (seqname, ranges) in self.ranges.iter() {
+            // unwrap should be safe, since seqname is produced from ranges iterator.
+            let mut indices = Vec::new();
+            for range in ranges.iter_ranges() {
+                indices.push(range.index);
+            }
+            all_indices.insert(seqname, indices)?;
+        }
+        Ok(all_indices)
+    }
+}
+
+impl<C, U: Clone> GRanges<C, Vec<U>>
+where
+    C: IterableRangeContainer<RangeType = RangeIndexed>,
+{
+    /// Create a new [`GenomeMap<Vec<U>>`] of clones of the data in the
+    /// data container, grouped by chromosome.
+    pub fn data_by_seqname(&self) -> Result<GenomeMap<Vec<U>>, GRangesError> {
+        let data = self.data().ok_or(GRangesError::NoDataContainer)?;
+        let mut all_new_data = GenomeMap::new();
+        for (seqname, indices) in self.data_indices()? {
+            let mut new_data = Vec::new();
+            for index in indices {
+                let value = data.get(index).unwrap();
+                new_data.push((*value).clone());
+            }
+            all_new_data.insert(&seqname, new_data)?;
+        }
+        Ok(all_new_data)
+    }
+}
+
+impl<C, U> GRanges<C, Vec<U>>
+where
+    C: IterableRangeContainer<RangeType = RangeIndexed>,
+{
+    /// Create a new [`GenomeMap<Vec<&U>>`] of references to the data in the
+    /// data container, grouped by chromosome.
+    pub fn data_refs_by_seqname(&self) -> Result<GenomeMap<Vec<&'_ U>>, GRangesError> {
+        let data = self.data().ok_or(GRangesError::NoDataContainer)?;
+        let mut all_new_data = GenomeMap::new();
+        for (seqname, indices) in self.data_indices()? {
+            let mut new_data = Vec::new();
+            for index in indices {
+                let value = data.get(index).unwrap();
+                new_data.push(value);
+            }
+            all_new_data.insert(&seqname, new_data)?;
+        }
+        Ok(all_new_data)
     }
 }
 
@@ -471,6 +614,19 @@ where
             }
         }
         Ok(gr)
+    }
+}
+
+impl<R: IterableRangeContainer> GRangesEmpty<R>
+where
+    <R as IterableRangeContainer>::RangeType: GenericRange,
+{
+    /// Retrieve all midpoints.
+    ///
+    /// These are calculated as (start + end)/2 in [`Position`],
+    /// which will truncate them.
+    pub fn midpoints(&self) -> Result<GenomeMap<Vec<Position>>, GRangesError> {
+        self.0.midpoints()
     }
 }
 
@@ -1037,6 +1193,38 @@ impl GRangesEmpty<VecRangesEmpty> {
     }
 }
 
+impl<T> GRanges<COITreesIndexed, T> {
+    /// Convert the [`COITreesIndexed`] range containers in this [`GRanges`] to a
+    /// [`VecRangesIndexed`].
+    pub fn into_vecranges(self) -> Result<GRanges<VecRangesIndexed, T>, GRangesError> {
+        let old_ranges = self.ranges;
+        let mut new_ranges: GenomeMap<VecRangesIndexed> = GenomeMap::new();
+        for (seqname, trees) in old_ranges.into_iter() {
+            new_ranges.insert(&seqname, trees.into())?;
+        }
+        Ok(GRanges {
+            ranges: new_ranges,
+            data: self.data,
+        })
+    }
+}
+
+impl GRangesEmpty<COITreesEmpty> {
+    /// Convert the [`COITreesEmpty`] range containers in this [`GRanges`] to a
+    /// [`VecRangesEmpty`].
+    pub fn into_vecranges(self) -> Result<GRangesEmpty<VecRangesEmpty>, GRangesError> {
+        let old_ranges = self.0.ranges;
+        let mut new_ranges: GenomeMap<VecRangesEmpty> = GenomeMap::new();
+        for (seqname, trees) in old_ranges.into_iter() {
+            new_ranges.insert(&seqname, trees.into())?;
+        }
+        Ok(GRangesEmpty(GRanges {
+            ranges: new_ranges,
+            data: None,
+        }))
+    }
+}
+
 impl<C> GRangesEmpty<C>
 where
     COITrees<()>: From<C>,
@@ -1557,5 +1745,31 @@ mod tests {
         let vec = vec.sort();
         let coit = vec.clone().into_coitrees().unwrap();
         assert_eq!(coit, vec);
+    }
+
+    #[test]
+    fn test_midpoints() {
+        let gr = granges_test_case_02();
+        let midpoints = gr.midpoints().unwrap();
+        let mut iter = midpoints.iter();
+
+        let first_chrom = iter.next().unwrap();
+        assert_eq!(first_chrom.0, "chr1");
+        assert_eq!(*first_chrom.1, vec![40]);
+        let second_chrom = iter.next().unwrap();
+        assert_eq!(second_chrom.0, "chr2");
+        assert_eq!(*second_chrom.1, vec![150, 275]);
+    }
+
+    #[test]
+    fn test_midpoints_empty() {
+        // and harder test case
+        let gr = granges_test_case_01().into_granges_empty().unwrap();
+        let midpoints = gr.midpoints().unwrap();
+        let mut iter = midpoints.iter();
+
+        let first_chrom = iter.next().unwrap();
+        assert_eq!(first_chrom.0, "chr1");
+        assert_eq!(*first_chrom.1, vec![2, 5, 13]);
     }
 }

@@ -86,6 +86,15 @@ impl AdjustableGenericRange for RangeEmpty {
     }
 }
 
+impl From<RangeIndexed> for RangeEmpty {
+    fn from(value: RangeIndexed) -> Self {
+        RangeEmpty {
+            start: value.start,
+            end: value.end,
+        }
+    }
+}
+
 /// [`RangeIndexed`] is a range with a valid
 /// index to a data element in the data container.
 #[derive(Clone, Debug, Default, PartialEq)]

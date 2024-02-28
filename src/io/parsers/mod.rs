@@ -79,6 +79,8 @@ use crate::Position;
 
 use self::utils::get_base_extension;
 
+use super::TsvRecordIterator;
+
 /// Inspect the first line to check that it looks like a valid BED-like
 /// file, i.e. the first column is there (there are no reasonable checks
 /// for sequence names other than presence), and the next to columns can
@@ -358,6 +360,19 @@ where
             }
         }
         None
+    }
+}
+
+impl<U> GeneralRangeRecordIterator<GenomicRangeRecord<U>>
+    for TsvRecordIterator<GenomicRangeRecord<U>>
+where
+    U: Clone + for<'de> serde::Deserialize<'de>,
+{
+    fn retain_seqnames(self, seqnames: &[String]) -> FilteredRanges<Self, GenomicRangeRecord<U>> {
+        FilteredRanges::new(self, Some(&seqnames.to_vec()), None)
+    }
+    fn exclude_seqnames(self, seqnames: &[String]) -> FilteredRanges<Self, GenomicRangeRecord<U>> {
+        FilteredRanges::new(self, None, Some(&seqnames.to_vec()))
     }
 }
 

@@ -137,6 +137,9 @@ pub enum GRangesError {
     #[error("The GRanges object is invalid because it lacks an associated data container. Ensure data is loaded or associated with the GRanges object before attempting operations that require data.")]
     NoDataContainer,
 
+    #[error("The supplied GRanges object and data container cannot be united into a new GRanges since they have differing lengths.")]
+    IncompatableGRangesAndData,
+
     // Sequences related errors
     #[error("The sequence name '{0}' was not found in the dataset. Verify the sequence names and try again.")]
     MissingSequenceName(String),
@@ -159,4 +162,9 @@ pub enum GRangesError {
 
     #[error("No operation was specified. See granges map --help.")]
     NoOperationSpecified,
+
+    // ndarray related errors
+    #[cfg(feature = "ndarray")]
+    #[error("Invalid shape encountered by ndarray: {0}")]
+    InvalidNdarrayShape(#[from] ndarray::ShapeError),
 }

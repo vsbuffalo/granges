@@ -105,11 +105,13 @@ pub fn granges_adjust(
         match ranges_iter {
             GenomicRangesParser::Bed3(iter) => {
                 let gr = GRangesEmpty::from_iter(iter, &genome)?;
-                gr.adjust_ranges(-both, both).to_tsv(output, &BED_TSV)?
+                gr.adjust_ranges(-both, both)
+                    .write_to_tsv(output, &BED_TSV)?
             }
             GenomicRangesParser::Bed5(iter) => {
                 let gr = GRanges::from_iter(iter, &genome)?;
-                gr.adjust_ranges(-both, both).to_tsv(output, &BED_TSV)?
+                gr.adjust_ranges(-both, both)
+                    .write_to_tsv(output, &BED_TSV)?
             }
             GenomicRangesParser::Bedlike(iter) => {
                 // Note the call to try_unwrap_data() here: this is because
@@ -117,7 +119,8 @@ pub fn granges_adjust(
                 // values means that writing to TSV doesn't have to deal with this (which
                 // always creates headaches).
                 let gr = GRanges::from_iter(iter.try_unwrap_data(), &genome)?;
-                gr.adjust_ranges(-both, both).to_tsv(output, &BED_TSV)?
+                gr.adjust_ranges(-both, both)
+                    .write_to_tsv(output, &BED_TSV)?
             }
             GenomicRangesParser::Unsupported => {
                 return Err(GRangesError::UnsupportedGenomicRangesFileFormat)
@@ -181,7 +184,7 @@ pub fn granges_filter(
             let right_gr = right_gr.into_coitrees()?;
 
             let semijoin = left_gr.filter_overlaps(&right_gr)?;
-            semijoin.to_tsv(output, &BED_TSV)?;
+            semijoin.write_to_tsv(output, &BED_TSV)?;
 
             Ok(CommandOutput::new((), report))
         }
@@ -203,7 +206,7 @@ pub fn granges_filter(
             let right_gr = right_gr.into_coitrees()?;
 
             let semijoin = left_gr.filter_overlaps(&right_gr)?;
-            semijoin.to_tsv(output, &BED_TSV)?;
+            semijoin.write_to_tsv(output, &BED_TSV)?;
 
             Ok(CommandOutput::new((), report))
         }
@@ -223,7 +226,7 @@ pub fn granges_filter(
             let right_gr = right_gr.into_coitrees()?;
 
             let semijoin = left_gr.filter_overlaps(&right_gr)?;
-            semijoin.to_tsv(output, &BED_TSV)?;
+            semijoin.write_to_tsv(output, &BED_TSV)?;
 
             Ok(CommandOutput::new((), report))
         }
@@ -246,7 +249,7 @@ pub fn granges_filter(
             let right_gr = right_gr.into_coitrees()?;
 
             let intersection = left_gr.filter_overlaps(&right_gr)?;
-            intersection.to_tsv(output, &BED_TSV)?;
+            intersection.write_to_tsv(output, &BED_TSV)?;
 
             Ok(CommandOutput::new((), report))
         }
@@ -303,7 +306,8 @@ pub fn granges_flank(
                 } else {
                     GRangesEmpty::from_iter(iter, &genome)?
                 };
-                gr.flanking_ranges(left, right)?.to_tsv(output, &BED_TSV)?
+                gr.flanking_ranges(left, right)?
+                    .write_to_tsv(output, &BED_TSV)?
             }
             GenomicRangesParser::Bed5(_iter) => {
                 unimplemented!()
@@ -314,7 +318,8 @@ pub fn granges_flank(
                 } else {
                     GRanges::from_iter(iter.try_unwrap_data(), &genome)?
                 };
-                gr.flanking_ranges(left, right)?.to_tsv(output, &BED_TSV)?
+                gr.flanking_ranges(left, right)?
+                    .write_to_tsv(output, &BED_TSV)?
             }
             GenomicRangesParser::Unsupported => {
                 return Err(GRangesError::UnsupportedGenomicRangesFileFormat)
@@ -469,7 +474,7 @@ pub fn granges_map(
             .collect::<Vec<DatumType>>()
     })?;
 
-    result_gr.to_tsv(output, &BED_TSV)?;
+    result_gr.write_to_tsv(output, &BED_TSV)?;
 
     Ok(CommandOutput::new((), report))
 }
@@ -483,7 +488,7 @@ pub fn granges_windows(
     output: Option<impl Into<PathBuf>>,
 ) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
-    GRangesEmpty::from_windows(&genome, width, step, chop)?.to_tsv(output, &BED_TSV)?;
+    GRangesEmpty::from_windows(&genome, width, step, chop)?.write_to_tsv(output, &BED_TSV)?;
     let report = Report::new();
     Ok(CommandOutput::new((), report))
 }
@@ -504,13 +509,13 @@ pub fn granges_random_bed(
         if sort {
             gr = gr.sort()
         }
-        gr.to_tsv(output, &BED_TSV)?;
+        gr.write_to_tsv(output, &BED_TSV)?;
     } else {
         let mut gr = random_granges(&genome, num)?;
         if sort {
             gr = gr.sort();
         }
-        gr.to_tsv(output, &BED_TSV)?;
+        gr.write_to_tsv(output, &BED_TSV)?;
     };
 
     let report = Report::new();

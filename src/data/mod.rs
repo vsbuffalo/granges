@@ -3,8 +3,13 @@
 
 use crate::traits::{DataContainer, IntoDatumType};
 
+#[cfg(feature = "ndarray")]
+pub mod ndarray;
 pub mod operations;
 pub mod vec;
+
+impl<U> DataContainer for Vec<U> {}
+impl DataContainer for () {}
 
 /// These are core supported data types stored in an `enum`, to
 /// unify the types that come out of standard operations like
@@ -67,6 +72,3 @@ impl<T: IntoDatumType> From<T> for DatumType {
         item.into_data_type()
     }
 }
-
-impl<U> DataContainer for Vec<U> {}
-impl DataContainer for () {}

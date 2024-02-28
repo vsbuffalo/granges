@@ -110,23 +110,3 @@ windows       418.87 s         65.13 s                       84.4515
 map_median    112.35 s         82.81 s                       26.2995
 ```
 
-Note however, there is a arithmetic scaling issue. Larger range datasets
-(1,000,000) lead to map operations that are inefficient. This is almost surely 
-due to `data/operations.rs`. Here is an example benchmark:
-
-```
-command       bedtools time    granges time      granges speedup (%)
-------------  ---------------  --------------  ---------------------
-map_multiple  26.89 min        688.60 s                     57.3189
-map_max       21.34 min        21.54 min                    -0.94889  *
-adjust        21.35 min        499.54 s                     60.9959
-filter        27.01 min        20.38 min                    24.5583
-map_min       935.69 s         17.48 min                   -12.1008   * 
-flank         30.26 min        943.36 s                     48.0353
-map_mean      20.13 min        931.21 s                     22.913
-map_sum       17.99 min        18.44 min                    -2.5225   *
-windows       507.84 s         84.79 s                      83.304
-map_median    16.90 min        17.81 min                    -5.36811  *
-```
-
-So median, sum, min, and max are slower.
