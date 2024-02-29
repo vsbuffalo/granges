@@ -2,9 +2,8 @@
 
 use crate::error::GRangesError;
 use crate::granges::GRanges;
-use crate::io::TsvConfig;
-use crate::traits::{DataContainer, IndexedDataContainer, RangeContainer, TsvSerialize};
-use ndarray::{Array1, Array2, ArrayBase, ArrayView1, Dim, OwnedRepr};
+use crate::traits::{DataContainer, IndexedDataContainer, RangeContainer};
+use ndarray::{Array1, Array2, ArrayView1};
 
 impl<T> DataContainer for Array1<T> {}
 impl<T> DataContainer for Array2<T> {}
@@ -207,15 +206,6 @@ where
         // shape is (number of indices, number of columns)
         Array2::from_shape_vec((indices.len(), cols), rows_data)
             .expect("Shape and collected data size mismatch")
-    }
-}
-
-impl<T: TsvSerialize> TsvSerialize for ArrayBase<OwnedRepr<T>, Dim<[usize; 1]>> {
-    fn to_tsv(&self, config: &TsvConfig) -> String {
-        self.iter()
-            .map(|x| x.to_tsv(config))
-            .collect::<Vec<_>>()
-            .join("\t")
     }
 }
 

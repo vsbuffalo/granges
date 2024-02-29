@@ -59,6 +59,13 @@ impl<T> TsvRecordIterator<T>
 where
     for<'de> T: Deserialize<'de>,
 {
+    /// Create a new TSV reader. By default, this will skip lines that being with
+    /// `'#'`, since a pseudo-standard is that these indicate metadata, or column
+    /// headers.
+    ///
+    /// # Stability
+    /// Future versions may parse comment headers or make this an option.
+    /// E.g. for VCF, it would need to be parsed.
     pub fn new(filepath: impl Into<PathBuf>) -> Result<Self, GRangesError> {
         let filepath = filepath.into();
 
@@ -73,6 +80,7 @@ where
         let reader = ReaderBuilder::new()
             .delimiter(b'\t')
             .has_headers(false)
+            .comment(Some(b'#'))
             .from_reader(stream);
 
         let inner = reader.into_deserialize();

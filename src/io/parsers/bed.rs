@@ -17,26 +17,27 @@
 //!
 
 use serde::de::Error as DeError;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::error::GRangesError;
-use crate::io::tsv::TsvConfig;
 use crate::io::InputStream;
-use crate::ranges::{GenomicRangeEmptyRecord, GenomicRangeRecord};
-use crate::traits::TsvSerialize;
+use crate::ranges::{GenomicRangeRecord, GenomicRangeRecordEmpty};
 use crate::Position;
 
 use super::parse_column;
 use super::tsv::TsvRecordIterator;
 
+// for BedlikeIterator only
+pub const PARSE_CAPACITY: usize = 512;
+
 /// [`serde`] deserializer for a BED column with a possibly missing value. Note that the [BED
 /// specification](https://samtools.github.io/hts-specs/BEDv1.pdf) only technically allows `'.'` to
 /// be used for missing strands, but in practice it can be found to represent
 /// missing scores, etc too.
-pub fn deserialize_bed_missing<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+pub fn bed_missing<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de> + FromStr,
@@ -53,11 +54,11 @@ where
 /// * `score`: a score.
 // TODO/RENAME: maybe since this goes against spec it should
 // be called Bed5AdditionPermissive?
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Bed5Addition {
     pub name: String,
-    #[serde(deserialize_with = "deserialize_bed_missing")]
+    #[serde(deserialize_with = "bed_missing")]
     pub score: Option<f64>,
 }
 
@@ -94,7 +95,7 @@ impl Iterator for Bed5Iterator {
 /// An iterator over BED3 entries (which just contain ranges no data).
 #[derive(Debug)]
 pub struct Bed3Iterator {
-    iter: TsvRecordIterator<GenomicRangeEmptyRecord>,
+    iter: TsvRecordIterator<GenomicRangeRecordEmpty>,
 }
 
 impl Bed3Iterator {
@@ -106,7 +107,7 @@ impl Bed3Iterator {
 }
 
 impl Iterator for Bed3Iterator {
-    type Item = Result<GenomicRangeEmptyRecord, GRangesError>;
+    type Item = Result<GenomicRangeRecordEmpty, GRangesError>;
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next()
     }
@@ -117,17 +118,6 @@ impl Iterator for Bed3Iterator {
 pub enum Strand {
     Forward,
     Reverse,
-}
-
-impl TsvSerialize for Option<Strand> {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
-        match self {
-            Some(Strand::Forward) => "+".to_string(),
-            Some(Strand::Reverse) => "-".to_string(),
-            None => config.no_value_string.to_string(),
-        }
-    }
 }
 
 /// Deserializes some value of type `t` with some possible missing
@@ -161,32 +151,6 @@ where
 //    }
 //}
 
-impl TsvSerialize for &Bed5Addition {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
-        format!(
-            "{}\t{}",
-            self.name,
-            self.score
-                .as_ref()
-                .map_or(config.no_value_string.clone(), |x| x.to_string())
-        )
-    }
-}
-
-impl TsvSerialize for Bed5Addition {
-    #![allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
-        format!(
-            "{}\t{}",
-            self.name,
-            self.score
-                .as_ref()
-                .map_or(config.no_value_string.clone(), |x| x.to_string())
-        )
-    }
-}
-
 ///// The additional three BED6 columns.
 //#[derive(Clone, Debug)]
 //pub struct Bed6Addition {
@@ -201,6 +165,7 @@ impl TsvSerialize for Bed5Addition {
 /// string columns to parse.
 pub struct BedlikeIterator {
     reader: BufReader<Box<dyn std::io::Read>>,
+    line_buffer: String,
 }
 
 impl std::fmt::Debug for BedlikeIterator {
@@ -214,10 +179,15 @@ impl BedlikeIterator {
     /// assumes the first three columns are the sequence name, start (0-indexed and inclusive),
     /// and end (0-indeed and exclusive) positions.
     pub fn new(filepath: impl Into<PathBuf>) -> Result<Self, GRangesError> {
-        let mut input_file = InputStream::new(filepath);
-        let _has_metadata = input_file.collect_metadata("#", None);
-        let reader = input_file.continue_reading()?;
-        Ok(Self { reader })
+        let input_file = InputStream::new(filepath);
+        // let _has_metadata = input_file.collect_metadata("#", None);
+        // let reader = input_file.continue_reading()?;
+        let reader = input_file.reader()?;
+        let line_buffer = String::with_capacity(PARSE_CAPACITY);
+        Ok(Self {
+            reader,
+            line_buffer,
+        })
     }
 }
 
@@ -225,14 +195,21 @@ impl Iterator for BedlikeIterator {
     type Item = Result<GenomicRangeRecord<Option<String>>, GRangesError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut line = String::new();
-        match self.reader.read_line(&mut line) {
-            Ok(0) => None,
-            Ok(_) => {
-                let line = line.trim_end();
-                Some((parse_bed_lazy)(line))
+        self.line_buffer.clear();
+
+        loop {
+            self.line_buffer.clear();
+            match self.reader.read_line(&mut self.line_buffer) {
+                Ok(0) => return None,
+                Ok(_) => {
+                    if !self.line_buffer.starts_with('#') {
+                        let line = self.line_buffer.trim_end();
+                        return Some(parse_bed_lazy(line));
+                    }
+                    // skip the metadata/comment character
+                }
+                Err(e) => return Some(Err(GRangesError::IOError(e))),
             }
-            Err(e) => Some(Err(GRangesError::IOError(e))),
         }
     }
 }

@@ -73,7 +73,7 @@ use std::path::PathBuf;
 
 use crate::error::GRangesError;
 use crate::io::file::InputStream;
-use crate::ranges::{GenomicRangeEmptyRecord, GenomicRangeRecord};
+use crate::ranges::{GenomicRangeRecord, GenomicRangeRecordEmpty};
 use crate::traits::{GeneralRangeRecordIterator, GenomicRangeRecordUnwrappable};
 use crate::Position;
 
@@ -330,11 +330,11 @@ where
 }
 
 /// Range-filtering iterator implementation for [`GenomicRangeEmptyRecord`].
-impl<I> Iterator for FilteredRanges<I, GenomicRangeEmptyRecord>
+impl<I> Iterator for FilteredRanges<I, GenomicRangeRecordEmpty>
 where
-    I: Iterator<Item = Result<GenomicRangeEmptyRecord, GRangesError>>,
+    I: Iterator<Item = Result<GenomicRangeRecordEmpty, GRangesError>>,
 {
-    type Item = Result<GenomicRangeEmptyRecord, GRangesError>;
+    type Item = Result<GenomicRangeRecordEmpty, GRangesError>;
 
     /// Get the next filtered entry, prioritizing exclude over retain.
     fn next(&mut self) -> Option<Self::Item> {
@@ -391,14 +391,14 @@ impl GeneralRangeRecordIterator<GenomicRangeRecord<Option<String>>> for BedlikeI
     }
 }
 
-impl GeneralRangeRecordIterator<GenomicRangeEmptyRecord> for Bed3Iterator {
-    fn retain_seqnames(self, seqnames: &[String]) -> FilteredRanges<Self, GenomicRangeEmptyRecord> {
+impl GeneralRangeRecordIterator<GenomicRangeRecordEmpty> for Bed3Iterator {
+    fn retain_seqnames(self, seqnames: &[String]) -> FilteredRanges<Self, GenomicRangeRecordEmpty> {
         FilteredRanges::new(self, Some(&seqnames.to_vec()), None)
     }
     fn exclude_seqnames(
         self,
         seqnames: &[String],
-    ) -> FilteredRanges<Self, GenomicRangeEmptyRecord> {
+    ) -> FilteredRanges<Self, GenomicRangeRecordEmpty> {
         FilteredRanges::new(self, None, Some(&seqnames.to_vec()))
     }
 }

@@ -134,10 +134,11 @@ impl InputStream {
     pub fn detect_columns(&mut self, delim: &str) -> Result<usize, GRangesError> {
         let mut skipped_lines = 0;
         let mut buf_reader = self.reader()?;
+        let mut line = String::new();
         while skipped_lines < self.skip_lines {
+            buf_reader.read_line(&mut line)?;
             skipped_lines += 1;
         }
-        let mut line = String::new();
         buf_reader.read_line(&mut line)?;
         Ok(line.split(delim).count())
     }

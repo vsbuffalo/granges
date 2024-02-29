@@ -2,16 +2,12 @@
 //!
 //!
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
 use crate::{
     error::GRangesError,
-    io::tsv::TsvConfig,
-    traits::{
-        AdjustableGenericRange, GenericRange, GenericRangeOperations, IndexedDataContainer,
-        TsvSerialize,
-    },
+    traits::{AdjustableGenericRange, GenericRange, GenericRangeOperations, IndexedDataContainer},
     Position,
 };
 
@@ -19,7 +15,7 @@ pub mod coitrees;
 pub mod operations;
 pub mod vec;
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct RangeEmpty {
     pub start: Position,
     pub end: Position,
@@ -171,7 +167,7 @@ impl AdjustableGenericRange for RangeIndexed {
 ///
 /// This is used as a type for holding a range with associated data directly
 /// from a parser.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct GenomicRangeRecord<U> {
     pub seqname: String,
     pub start: Position,
@@ -251,62 +247,15 @@ impl<U: Clone> GenericRangeOperations for GenomicRangeRecord<U> {
     }
 }
 
-impl TsvSerialize for GenomicRangeRecord<()> {
-    #[allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
-        format!("{}\t{}\t{}", self.seqname, self.start, self.end)
-    }
-}
-
-// impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<Option<U>> {
-//     fn to_tsv(&self) -> String {
-//         match &self.data {
-//             None => {
-//                 format!("{}\t{}\t{}", self.seqname, self.start, self.end,)
-//             }
-//             Some(data) => {
-//                 format!(
-//                     "{}\t{}\t{}\t{}",
-//                     self.seqname,
-//                     self.start,
-//                     self.end,
-//                     data.to_tsv()
-//                 )
-//             }
-//         }
-//     }
-// }
-
-impl<U: TsvSerialize> TsvSerialize for GenomicRangeRecord<U> {
-    /// Serialize this [`GenomicRangeRecord<U>`] to TSV, using the recursive [`TsvSerialize`]
-    /// trait method.
-    ///
-    /// Note that this does *not* append the newline — it is up to
-    /// the `U.to_tsv()` trait method implementation. This is design is
-    /// intentional, since one common use case is when `U` is an [`Option<String>`],
-    /// which is the type combination commonly used in lazy parsing. In this case,
-    /// when the data is `None`, that indicates no more columns.
-    #[allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
-        format!(
-            "{}\t{}\t{}\t{}",
-            self.seqname,
-            self.start,
-            self.end,
-            self.data.to_tsv(config)
-        )
-    }
-}
-
 /// Represents a genomic range entry without data, e.g. from a BED3 parser.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-pub struct GenomicRangeEmptyRecord {
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct GenomicRangeRecordEmpty {
     pub seqname: String,
     pub start: Position,
     pub end: Position,
 }
 
-impl GenomicRangeEmptyRecord {
+impl GenomicRangeRecordEmpty {
     pub fn new(seqname: String, start: Position, end: Position) -> Self {
         assert!(end > start);
         Self {
@@ -317,7 +266,7 @@ impl GenomicRangeEmptyRecord {
     }
 }
 
-impl GenericRange for GenomicRangeEmptyRecord {
+impl GenericRange for GenomicRangeRecordEmpty {
     fn start(&self) -> Position {
         self.start
     }
@@ -329,7 +278,7 @@ impl GenericRange for GenomicRangeEmptyRecord {
     }
 }
 
-impl AdjustableGenericRange for GenomicRangeEmptyRecord {
+impl AdjustableGenericRange for GenomicRangeRecordEmpty {
     fn set_start(&mut self, start: Position) {
         self.start = start
     }
@@ -338,7 +287,7 @@ impl AdjustableGenericRange for GenomicRangeEmptyRecord {
     }
 }
 
-impl GenericRangeOperations for GenomicRangeEmptyRecord {
+impl GenericRangeOperations for GenomicRangeRecordEmpty {
     /// Create flanking regions for this [`GenomicRangeEmptyRecord`] range.
     fn flanking_ranges<R: GenericRange>(
         &self,
@@ -352,7 +301,7 @@ impl GenericRangeOperations for GenomicRangeEmptyRecord {
             let flank_end = std::cmp::min(self.start, seqlen);
             if flank_end > flank_start {
                 let left_flank_region =
-                    GenomicRangeEmptyRecord::new(self.seqname.clone(), flank_start, flank_end);
+                    GenomicRangeRecordEmpty::new(self.seqname.clone(), flank_start, flank_end);
                 flanking.push(left_flank_region);
             }
         }
@@ -361,18 +310,11 @@ impl GenericRangeOperations for GenomicRangeEmptyRecord {
             let flank_end = std::cmp::min(self.end + right, seqlen);
             if flank_end > flank_start {
                 let right_flank_region =
-                    GenomicRangeEmptyRecord::new(self.seqname.clone(), flank_start, flank_end);
+                    GenomicRangeRecordEmpty::new(self.seqname.clone(), flank_start, flank_end);
                 flanking.push(right_flank_region);
             }
         }
         flanking
-    }
-}
-
-impl TsvSerialize for GenomicRangeEmptyRecord {
-    #[allow(unused_variables)]
-    fn to_tsv(&self, config: &TsvConfig) -> String {
-        format!("{}\t{}\t{}", self.seqname, self.start, self.end)
     }
 }
 
@@ -406,7 +348,7 @@ impl GenomicRangeIndexedRecord {
         data: &'a T,
     ) -> GenomicRangeRecord<<T as IndexedDataContainer>::Item<'a>>
     where
-        T: IndexedDataContainer + TsvSerialize,
+        T: IndexedDataContainer,
     {
         let data = data.get_value(self.index().unwrap());
 
@@ -417,12 +359,11 @@ impl GenomicRangeIndexedRecord {
             data,
         }
     }
-    pub fn to_record_empty<T>(self, seqnames: &[String]) -> GenomicRangeRecord<()> {
-        GenomicRangeRecord {
+    pub fn to_record_empty<T>(self, seqnames: &[String]) -> GenomicRangeRecordEmpty {
+        GenomicRangeRecordEmpty {
             seqname: seqnames[self.seqname_index].clone(),
             start: self.start,
             end: self.end,
-            data: (),
         }
     }
 }

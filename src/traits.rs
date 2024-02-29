@@ -345,9 +345,3 @@ pub trait Sequences {
         Ok(gr)
     }
 }
-
-/// Defines how to serialize something to TSV.
-pub trait TsvSerialize {
-    // Serialize something to a TSV [`String`].
-    fn to_tsv(&self, config: &TsvConfig) -> String;
-}

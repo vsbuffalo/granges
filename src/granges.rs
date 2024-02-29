@@ -37,14 +37,16 @@
 //! [`BedlikeIterator`]: crate::io::parsers::BedlikeIterator
 //! [`GRanges::into_coitrees`]: crate::granges::GRanges::into_coitrees
 
-use std::{collections::HashSet, path::PathBuf};
+use std::{collections::HashSet, fs::File, io, path::PathBuf};
 
+use csv::WriterBuilder;
 use genomap::GenomeMap;
 use indexmap::IndexMap;
+use serde::Serialize;
 
 use crate::{
     ensure_eq,
-    io::{tsv::TsvConfig, OutputStream},
+    io::tsv::TsvConfig,
     iterators::GRangesIterator,
     join::{
         CombinedJoinData, CombinedJoinDataBothEmpty, CombinedJoinDataLeftEmpty,
@@ -55,12 +57,12 @@ use crate::{
     ranges::{
         coitrees::{COITrees, COITreesEmpty, COITreesIndexed},
         vec::{VecRanges, VecRangesEmpty, VecRangesIndexed},
-        GenomicRangeEmptyRecord, GenomicRangeRecord, RangeEmpty, RangeIndexed,
+        GenomicRangeRecord, GenomicRangeRecordEmpty, RangeEmpty, RangeIndexed,
     },
     traits::{
         AdjustableGenericRange, AsGRangesRef, GenericRange, GenericRangeOperations,
         GenomicRangesTsvSerialize, IndexedDataContainer, IterableRangeContainer, LeftOverlaps,
-        RangeContainer, TsvSerialize,
+        RangeContainer,
     },
     Position, PositionOffset,
 };
@@ -215,8 +217,7 @@ impl<'a, C, T> AsGRangesRef<'a, C, T> for GRanges<C, T> {
 impl<'a, T> GenomicRangesTsvSerialize<'a, VecRangesIndexed> for GRanges<VecRangesIndexed, T>
 where
     T: IndexedDataContainer + 'a,
-    T: TsvSerialize,
-    <T as IndexedDataContainer>::Item<'a>: TsvSerialize,
+    <T as IndexedDataContainer>::Item<'a>: Serialize,
 {
     /// Write this [`GRanges`] object to a TSV file to `output`, using the [`TsvConfig`]
     /// specified with `config`.
@@ -230,18 +231,25 @@ where
         output: Option<impl Into<PathBuf>>,
         config: &TsvConfig,
     ) -> Result<(), GRangesError> {
-        // output stream -- header is None for now (TODO)
-        let output = output.map_or(OutputStream::new_stdout(None), |file| {
-            OutputStream::new(file, None)
-        });
-        let mut writer = output.writer()?;
+        let writer_boxed: Box<dyn io::Write> = match output {
+            Some(path) => Box::new(File::create(path.into())?),
+            None => Box::new(io::stdout()),
+        };
 
-        let data_ref = self.data.as_ref().ok_or(GRangesError::NoDataContainer)?;
-        let seqnames = self.seqnames();
+        let mut writer = WriterBuilder::new()
+            .delimiter(b'\t')
+            .has_headers(config.headers)
+            .from_writer(writer_boxed);
+
         for range in self.iter_ranges() {
-            let record = range.to_record(&seqnames, data_ref);
-            writeln!(writer, "{}", record.to_tsv(config))?;
+            let record = range.to_record(
+                &self.seqnames(),
+                self.data.as_ref().ok_or(GRangesError::NoDataContainer)?,
+            );
+            writer.serialize(record)?;
         }
+
+        writer.flush()?;
         Ok(())
     }
 }
@@ -259,18 +267,22 @@ impl<'a, R: IterableRangeContainer> GenomicRangesTsvSerialize<'a, R> for GRanges
         output: Option<impl Into<PathBuf>>,
         config: &TsvConfig,
     ) -> Result<(), GRangesError> {
-        // TODO gzip output handling
-        // output stream -- header is None for now (TODO)
-        let output = output.map_or(OutputStream::new_stdout(None), |file| {
-            OutputStream::new(file, None)
-        });
-        let mut writer = output.writer()?;
+        let writer_boxed: Box<dyn io::Write> = match output {
+            Some(path) => Box::new(File::create(path.into())?),
+            None => Box::new(io::stdout()),
+        };
 
-        let seqnames = self.seqnames();
-        for range in self.0.iter_ranges() {
-            let record = range.to_record_empty::<()>(&seqnames);
-            writeln!(writer, "{}", record.to_tsv(config))?;
+        let mut writer = WriterBuilder::new()
+            .delimiter(b'\t')
+            .has_headers(config.headers)
+            .from_writer(writer_boxed);
+
+        for range in self.iter_ranges() {
+            let record = range.to_record_empty::<()>(&self.seqnames());
+            writer.serialize(record)?;
         }
+
+        writer.flush()?;
         Ok(())
     }
 }
@@ -1182,7 +1194,7 @@ impl GRangesEmpty<VecRangesEmpty> {
         seqlens: &IndexMap<String, Position>,
     ) -> Result<GRangesEmpty<VecRangesEmpty>, GRangesError>
     where
-        I: Iterator<Item = Result<GenomicRangeEmptyRecord, GRangesError>>,
+        I: Iterator<Item = Result<GenomicRangeRecordEmpty, GRangesError>>,
     {
         let mut gr = GRangesEmpty::new_vec(seqlens);
         for possible_entry in iter {

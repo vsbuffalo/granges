@@ -1,19 +1,19 @@
 //! Command functions that implement each of the `granges` subcommands.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, io, fs::File};
+
+use csv::WriterBuilder;
 
 use crate::{
-    data::{operations::Operation, DatumType},
+    data::{operations::Operation, SerializableDatumType},
     io::{
         parsers::{Bed5Iterator, GenomicRangesParser},
         tsv::BED_TSV,
-        OutputStream,
     },
     prelude::*,
-    ranges::{operations::adjust_range, GenomicRangeEmptyRecord, GenomicRangeRecord},
+    ranges::{operations::adjust_range, GenomicRangeRecordEmpty, GenomicRangeRecord},
     reporting::{CommandOutput, Report},
     test_utilities::{random_granges, random_granges_mock_bed5},
-    traits::TsvSerialize,
     Position, PositionOffset,
 };
 
@@ -57,15 +57,18 @@ pub fn granges_adjust(
 ) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
 
-    // Setup Output stream -- header is None for now (TODO).
-    let output_stream = output.map_or(OutputStream::new_stdout(None), |file| {
-        OutputStream::new(file, None)
-    });
-    let mut writer = output_stream.writer()?;
+    let writer_boxed: Box<dyn io::Write> = match output {
+        Some(path) => Box::new(File::create(path)?),
+        None => Box::new(io::stdout()),
+    };
+
+    let mut writer = WriterBuilder::new()
+        .delimiter(b'\t')
+        .has_headers(false)
+        .from_writer(writer_boxed);
 
     // For reporting stuff to the user.
     let mut report = Report::new();
-
     let mut skipped_ranges = 0;
 
     if !sort {
@@ -84,16 +87,16 @@ pub fn granges_adjust(
             let possibly_adjusted_range = adjust_range(range, -both, both, length);
 
             if let Some(range_adjusted) = possibly_adjusted_range {
-                writeln!(writer, "{}", &range_adjusted.to_tsv(&BED_TSV))?;
+                writer.serialize(range_adjusted)?;
             } else {
                 skipped_ranges += 1;
             }
 
             if skipped_ranges > 0 {
                 report.add_issue(format!(
-                    "{} ranges were removed because their widths after adjustment were ≤ 0",
-                    skipped_ranges
-                ))
+                        "{} ranges were removed because their widths after adjustment were ≤ 0",
+                        skipped_ranges
+                        ))
             }
         }
     } else {
@@ -158,7 +161,7 @@ pub fn granges_filter(
     right_path: &PathBuf,
     output: Option<&PathBuf>,
     skip_missing: bool,
-) -> Result<CommandOutput<()>, GRangesError> {
+    ) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
     let seqnames: Vec<String> = genome.keys().cloned().collect();
 
@@ -197,7 +200,7 @@ pub fn granges_filter(
                 right_gr = GRanges::from_iter(
                     right.try_unwrap_data().retain_seqnames(&seqnames),
                     &genome,
-                )?;
+                    )?;
             } else {
                 left_gr = GRangesEmpty::from_iter(left, &genome)?;
                 right_gr = GRanges::from_iter(right.try_unwrap_data(), &genome)?;
@@ -240,7 +243,7 @@ pub fn granges_filter(
                 right_gr = GRanges::from_iter(
                     right.try_unwrap_data().retain_seqnames(&seqnames),
                     &genome,
-                )?;
+                    )?;
             } else {
                 left_gr = GRanges::from_iter(left.try_unwrap_data(), &genome)?;
                 right_gr = GRanges::from_iter(right.try_unwrap_data(), &genome)?;
@@ -289,7 +292,7 @@ pub fn granges_flank(
     output: Option<&PathBuf>,
     skip_missing: bool,
     mode: ProcessingMode,
-) -> Result<CommandOutput<()>, GRangesError> {
+    ) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
     let seqnames: Vec<String> = genome.keys().cloned().collect();
     let ranges_iter = GenomicRangesFile::parsing_iterator(bedfile)?;
@@ -326,11 +329,15 @@ pub fn granges_flank(
             }
         },
         ProcessingMode::Streaming => {
-            // Setup Output stream -- header is None for now (TODO).
-            let output_stream = output.map_or(OutputStream::new_stdout(None), |file| {
-                OutputStream::new(file, None)
-            });
-            let mut writer = output_stream.writer()?;
+            let writer_boxed: Box<dyn io::Write> = match output {
+                Some(path) => Box::new(File::create(path)?),
+                None => Box::new(io::stdout()),
+            };
+
+            let mut writer = WriterBuilder::new()
+                .delimiter(b'\t')
+                .has_headers(false)
+                .from_writer(writer_boxed);
 
             match ranges_iter {
                 // FIXME: code redundancy. But too early now to design traits, etc.
@@ -346,7 +353,7 @@ pub fn granges_flank(
                             let flanking_ranges = range
                                 .flanking_ranges::<GenomicRangeRecord<String>>(left, right, length);
                             for flanking_range in flanking_ranges {
-                                writeln!(writer, "{}", &flanking_range.to_tsv(&BED_TSV))?;
+                                writer.serialize(flanking_range)?;
                             }
                         }
                     } else {
@@ -358,9 +365,9 @@ pub fn granges_flank(
                                 .ok_or(GRangesError::MissingSequence(seqname.to_string()))?;
 
                             let flanking_ranges = range
-                                .flanking_ranges::<GenomicRangeEmptyRecord>(left, right, length);
+                                .flanking_ranges::<GenomicRangeRecordEmpty>(left, right, length);
                             for flanking_range in flanking_ranges {
-                                writeln!(writer, "{}", &flanking_range.to_tsv(&BED_TSV))?;
+                                writer.serialize(flanking_range)?;
                             }
                         }
                     }
@@ -380,7 +387,7 @@ pub fn granges_flank(
                             let flanking_ranges = range
                                 .flanking_ranges::<GenomicRangeRecord<String>>(left, right, length);
                             for flanking_range in flanking_ranges {
-                                writeln!(writer, "{}", &flanking_range.to_tsv(&BED_TSV))?;
+                                writer.serialize(flanking_range)?;
                             }
                         }
                     } else {
@@ -392,9 +399,9 @@ pub fn granges_flank(
                                 .ok_or(GRangesError::MissingSequence(seqname.to_string()))?;
 
                             let flanking_ranges = range
-                                .flanking_ranges::<GenomicRangeEmptyRecord>(left, right, length);
+                                .flanking_ranges::<GenomicRangeRecordEmpty>(left, right, length);
                             for flanking_range in flanking_ranges {
-                                writeln!(writer, "{}", &flanking_range.to_tsv(&BED_TSV))?;
+                                writer.serialize(flanking_range)?;
                             }
                         }
                     }
@@ -417,7 +424,7 @@ pub fn granges_map(
     operations: Vec<Operation>,
     output: Option<&PathBuf>,
     skip_missing: bool,
-) -> Result<CommandOutput<()>, GRangesError> {
+    ) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
     let seqnames: Vec<String> = genome.keys().cloned().collect();
     let report = Report::new();
@@ -470,8 +477,10 @@ pub fn granges_map(
         // Run all operations on the scores.
         operations
             .iter()
-            .map(|operation| operation.run(&mut overlap_scores))
-            .collect::<Vec<DatumType>>()
+            .map(|operation| {
+                operation.run(&mut overlap_scores).into_serializable(&BED_TSV)
+            })
+            .collect::<Vec<SerializableDatumType>>()
     })?;
 
     result_gr.write_to_tsv(output, &BED_TSV)?;
@@ -486,7 +495,7 @@ pub fn granges_windows(
     step: Option<Position>,
     chop: bool,
     output: Option<impl Into<PathBuf>>,
-) -> Result<CommandOutput<()>, GRangesError> {
+    ) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
     GRangesEmpty::from_windows(&genome, width, step, chop)?.write_to_tsv(output, &BED_TSV)?;
     let report = Report::new();
@@ -500,7 +509,7 @@ pub fn granges_random_bed(
     output: Option<impl Into<PathBuf>>,
     sort: bool,
     bed5: bool,
-) -> Result<CommandOutput<()>, GRangesError> {
+    ) -> Result<CommandOutput<()>, GRangesError> {
     // get the genome info
     let genome = read_seqlens(seqlens)?;
 

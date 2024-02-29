@@ -419,7 +419,7 @@ pub mod prelude {
         AsGRangesRef, GeneralRangeRecordIterator, GenericRange, GenericRangeOperations,
         GenomicRangeRecordUnwrappable, GenomicRangesTsvSerialize, IndexedDataContainer,
         IntoDatumType, IntoIterableRangesContainer, IterableRangeContainer, JoinDataOperations,
-        LeftOverlaps, TsvSerialize,
+        LeftOverlaps,
     };
 
     pub use crate::seqlens;

@@ -34,11 +34,19 @@ pub fn median<F: Float + Sum>(numbers: &mut [F]) -> Option<F> {
 /// The (subset of) standard `bedtools map` operations.
 #[derive(Clone, Debug, ValueEnum)]
 pub enum Operation {
+    /// Calculate the sum of all values (a set of zero elements has sum 0.0).
     Sum,
+    /// Calculate the sum of all values, but set of zero elements is a missing value, not 0.0.
+    SumNotEmpty,
+    /// Calculate the minimum of values.
     Min,
+    /// Calculate the maximum of values.
     Max,
+    /// Calculate the mean of values.
     Mean,
+    /// Calculate the median of values.
     Median,
+    /// Concatenate all values into a string separated by commas.
     Collapse,
 }
 
@@ -50,6 +58,13 @@ impl Operation {
     {
         match self {
             Operation::Sum => {
+                let sum: T = data.iter().copied().sum();
+                sum.into_data_type()
+            }
+            Operation::SumNotEmpty => {
+                if data.is_empty() {
+                    return DatumType::NoValue;
+                }
                 let sum: T = data.iter().copied().sum();
                 sum.into_data_type()
             }
