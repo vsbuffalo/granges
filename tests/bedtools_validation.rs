@@ -3,9 +3,7 @@
 use granges::{
     commands::granges_random_bed,
     io::{parsers::bed::bed_missing, InputStream},
-    prelude::{
-        read_seqlens, BedlikeIterator, GRanges, GenomicRangesFile, TsvRecordIterator,
-    },
+    prelude::{read_seqlens, BedlikeIterator, GRanges, GenomicRangesFile, TsvRecordIterator},
     ranges::GenomicRangeRecord,
     test_utilities::{granges_binary_path, random_bed3file, random_bed5file, temp_bedfile},
 };

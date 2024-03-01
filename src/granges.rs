@@ -1280,15 +1280,50 @@ impl<CL: RangeContainer> GRangesEmpty<CL>
 where
     CL: IterableRangeContainer,
 {
-    /// Filter out ranges that do *not* have at least overlap with the `right` ranges.
+    /// Exclude genomic ranges in this object that have any overlaps
+    /// with the `right` set of genomic ranges.
     ///
-    /// In database lingo, this is a type of *filtering join*, in particular a *semi join*.
-    /// See Hadley Wickham's excellent [R for Data
+    /// This will exclude the *entire* left range, if it had *any*
+    /// overlaps with *any* right genomic ranges.
+    ///
+    /// This is a type of *filtering join*, in particular a *anti-join*.
+    /// See Hadley Wickham's [R for Data Science](https://r4ds.hadley.nz/joins.html#filtering-joins) for more information.
+    pub fn antifilter_overlaps<'a, M: Clone + 'a, DR: 'a>(
+        self,
+        // right: &GRanges<COITrees<M>, DR>,
+        right: &'a impl AsGRangesRef<'a, COITrees<M>, DR>,
+    ) -> Result<GRangesEmpty<VecRangesEmpty>, GRangesError> {
+        let mut gr = GRangesEmpty::new_vec(&self.seqlens());
+
+        let right_ref = right.as_granges_ref();
+
+        for (seqname, left_ranges) in self.0.ranges.iter() {
+            for left_range in left_ranges.iter_ranges() {
+                if let Some(right_ranges) = right_ref.ranges.get(seqname) {
+                    let has_overlaps =
+                        right_ranges.count_overlaps(left_range.start(), left_range.end()) > 0;
+                    if !has_overlaps {
+                        gr.push_range(seqname, left_range.start(), left_range.end())?;
+                    }
+                } else {
+                    // if this left range's chrom doesn't exist in right, it doesn't have
+                    // overlaps, so we push
+                    gr.push_range(seqname, left_range.start(), left_range.end())?;
+                }
+            }
+        }
+        Ok(gr)
+    }
+
+    /// Retain only genomic ranges that have at least one overlap with the `right`
+    /// set of genomic ranges. The whole range will be retained.
+    ///
+    /// This will retain the *entire* left range only if it had at least one
+    /// basepair overlap with *any* right genomic range.
+    ///
+    /// This is a type of *filtering join*, in particular a *semi-join*.
+    /// See Hadley Wickham's [R for Data
     /// Science](https://r4ds.hadley.nz/joins.html#filtering-joins) for more information.
-    ///
-    /// Note that this consumes the `self` [`GRanges`] object, turning it into a new
-    /// [`GRanges<VecRangesEmpty, ()>`].
-    ///
     pub fn filter_overlaps<'a, M: Clone + 'a, DR: 'a>(
         self,
         // right: &GRanges<COITrees<M>, DR>,
@@ -1319,19 +1354,42 @@ impl<CL, U> GRanges<CL, Vec<U>>
 where
     CL: IterableRangeContainer,
 {
-    /// Filter out ranges that do *not* have at least overlap with the `right` ranges.
+    /// Retain only genomic ranges that have at least one overlap with the `right`
+    /// set of genomic ranges. The whole range will be retained.
     ///
-    /// In database lingo, this is a type of *filtering join*, in particular a *semi join*.
-    /// See Hadley Wickham's excellent [R for Data
+    /// This will retain the *entire* left range only if it had at least one
+    /// basepair overlap with *any* right genomic range.
+    ///
+    /// This is a type of *filtering join*, in particular a *semi-join*.
+    /// See Hadley Wickham's [R for Data
     /// Science](https://r4ds.hadley.nz/joins.html#filtering-joins) for more information.
-    ///
-    /// Note that this consumes the `self` [`GRanges`] object, turning it into a new
-    /// [`GRanges<VecRangesIndexed, Vec<U>>`]. The data container is rebuilt from indices
-    /// into a new [`Vec<U>`] where `U` is the associated type [`IndexedDataContainer::Item`],
-    /// which represents the individual data element in the data container.
     pub fn filter_overlaps<'a, M: Clone + 'a, DR: 'a>(
+        self,
+        right: &'a impl AsGRangesRef<'a, COITrees<M>, DR>,
+    ) -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError> {
+        self._filter_overlaps_base(right, false)
+    }
+
+    /// Exclude genomic ranges in this object that have any overlaps
+    /// with the `right` set of genomic ranges.
+    ///
+    /// This will exclude the *entire* left range, if it had *any*
+    /// overlaps with *any* right genomic ranges.
+    ///
+    /// This is a type of *filtering join*, in particular a *anti-join*.
+    /// See Hadley Wickham's [R for Data Science](https://r4ds.hadley.nz/joins.html#filtering-joins) for more information.
+    pub fn antifilter_overlaps<'a, M: Clone + 'a, DR: 'a>(
+        self,
+        right: &'a impl AsGRangesRef<'a, COITrees<M>, DR>,
+    ) -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError> {
+        self._filter_overlaps_base(right, true)
+    }
+
+    // internal base function for handling the cases above
+    fn _filter_overlaps_base<'a, M: Clone + 'a, DR: 'a>(
         mut self,
         right: &'a impl AsGRangesRef<'a, COITrees<M>, DR>,
+        anti: bool,
     ) -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError> {
         let mut gr: GRanges<VecRangesIndexed, Vec<U>> = GRanges::new_vec(&self.seqlens());
 
@@ -1345,11 +1403,11 @@ where
         for (seqname, left_ranges) in self.ranges.iter() {
             for left_range in left_ranges.iter_ranges() {
                 if let Some(right_ranges) = right_ref.ranges.get(seqname) {
-                    let num_overlaps =
-                        right_ranges.count_overlaps(left_range.start(), left_range.end());
-                    if num_overlaps == 0 {
-                        // no overlaps -- skip
-                    } else {
+                    let has_overlaps =
+                        right_ranges.count_overlaps(left_range.start(), left_range.end()) > 0;
+                    // XOR with anti
+                    let passes_filter = has_overlaps != anti;
+                    if passes_filter {
                         gr.push_range_with_index(
                             seqname,
                             left_range.start(),
@@ -1361,6 +1419,19 @@ where
                         new_indices.push(current_index);
                         current_index += 1;
                     }
+                } else if anti {
+                    // if this left range's chrom doesn't exist in right, it doesn't have
+                    // overlaps, so we push
+                    gr.push_range_with_index(
+                        seqname,
+                        left_range.start(),
+                        left_range.end(),
+                        current_index,
+                    )?;
+                    // unwrap should be safe, since this is an indexed GRanges
+                    old_indices.insert(left_range.index().unwrap());
+                    new_indices.push(current_index);
+                    current_index += 1;
                 }
             }
         }
@@ -1509,6 +1580,52 @@ mod tests {
 
         let gr_filtered = gr.filter_overlaps(&gr_keep).unwrap();
         assert_eq!(gr_filtered.len(), 3);
+    }
+
+    #[test]
+    fn granges_antifilter_overlaps() {
+        // ANTI version of above
+        let seqlens = seqlens! { "chr1" => 10};
+
+        // test 1: one range that overlaps only the first range
+        let gr = granges_test_case_01();
+        let mut gr_keep: GRangesEmpty<VecRangesEmpty> = GRangesEmpty::new_vec(&seqlens);
+        gr_keep.push_range("chr1", 0, 1).unwrap();
+        let gr_keep = gr_keep.into_coitrees().unwrap();
+
+        let gr_filtered = gr.antifilter_overlaps(&gr_keep).unwrap();
+        assert_eq!(gr_filtered.len(), 4);
+
+        // test 2: one range that overlaps the first two ranges
+        let gr = granges_test_case_01();
+        let mut gr_keep: GRangesEmpty<VecRangesEmpty> = GRangesEmpty::new_vec(&seqlens);
+        gr_keep.push_range("chr1", 0, 5).unwrap();
+        let gr_keep = gr_keep.into_coitrees().unwrap();
+
+        let gr_filtered = gr.antifilter_overlaps(&gr_keep).unwrap();
+        assert_eq!(gr_filtered.len(), 3);
+
+        // test 3: one range that overlaps no ranges
+        let gr = granges_test_case_01();
+        let mut gr_keep: GRangesEmpty<VecRangesEmpty> = GRangesEmpty::new_vec(&seqlens);
+        gr_keep.push_range("chr1", 8, 9).unwrap();
+        let gr_keep = gr_keep.into_coitrees().unwrap();
+
+        let gr_filtered = gr.clone().antifilter_overlaps(&gr_keep).unwrap();
+        assert_eq!(gr_filtered.len(), 5);
+        assert_eq!(gr, gr_filtered);
+
+        // test 4: ranges on two chromosomes: first overlaps two ranges, second
+        // overlaps one
+        let gr = granges_test_case_01();
+        let seqlens = seqlens! { "chr1" => 10, "chr2" => 10 };
+        let mut gr_keep: GRangesEmpty<VecRangesEmpty> = GRangesEmpty::new_vec(&seqlens);
+        gr_keep.push_range("chr1", 4, 7).unwrap();
+        gr_keep.push_range("chr2", 10, 12).unwrap();
+        let gr_keep = gr_keep.into_coitrees().unwrap();
+
+        let gr_filtered = gr.antifilter_overlaps(&gr_keep).unwrap();
+        assert_eq!(gr_filtered.len(), 2);
     }
 
     #[test]

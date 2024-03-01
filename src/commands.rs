@@ -1,6 +1,6 @@
 //! Command functions that implement each of the `granges` subcommands.
 
-use std::{path::PathBuf, io, fs::File};
+use std::{fs::File, io, path::PathBuf};
 
 use csv::WriterBuilder;
 
@@ -11,7 +11,7 @@ use crate::{
         tsv::BED_TSV,
     },
     prelude::*,
-    ranges::{operations::adjust_range, GenomicRangeRecordEmpty, GenomicRangeRecord},
+    ranges::{operations::adjust_range, GenomicRangeRecord, GenomicRangeRecordEmpty},
     reporting::{CommandOutput, Report},
     test_utilities::{random_granges, random_granges_mock_bed5},
     Position, PositionOffset,
@@ -94,9 +94,9 @@ pub fn granges_adjust(
 
             if skipped_ranges > 0 {
                 report.add_issue(format!(
-                        "{} ranges were removed because their widths after adjustment were ≤ 0",
-                        skipped_ranges
-                        ))
+                    "{} ranges were removed because their widths after adjustment were ≤ 0",
+                    skipped_ranges
+                ))
             }
         }
     } else {
@@ -161,7 +161,7 @@ pub fn granges_filter(
     right_path: &PathBuf,
     output: Option<&PathBuf>,
     skip_missing: bool,
-    ) -> Result<CommandOutput<()>, GRangesError> {
+) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
     let seqnames: Vec<String> = genome.keys().cloned().collect();
 
@@ -200,7 +200,7 @@ pub fn granges_filter(
                 right_gr = GRanges::from_iter(
                     right.try_unwrap_data().retain_seqnames(&seqnames),
                     &genome,
-                    )?;
+                )?;
             } else {
                 left_gr = GRangesEmpty::from_iter(left, &genome)?;
                 right_gr = GRanges::from_iter(right.try_unwrap_data(), &genome)?;
@@ -243,7 +243,7 @@ pub fn granges_filter(
                 right_gr = GRanges::from_iter(
                     right.try_unwrap_data().retain_seqnames(&seqnames),
                     &genome,
-                    )?;
+                )?;
             } else {
                 left_gr = GRanges::from_iter(left.try_unwrap_data(), &genome)?;
                 right_gr = GRanges::from_iter(right.try_unwrap_data(), &genome)?;
@@ -292,7 +292,7 @@ pub fn granges_flank(
     output: Option<&PathBuf>,
     skip_missing: bool,
     mode: ProcessingMode,
-    ) -> Result<CommandOutput<()>, GRangesError> {
+) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
     let seqnames: Vec<String> = genome.keys().cloned().collect();
     let ranges_iter = GenomicRangesFile::parsing_iterator(bedfile)?;
@@ -424,7 +424,7 @@ pub fn granges_map(
     operations: Vec<Operation>,
     output: Option<&PathBuf>,
     skip_missing: bool,
-    ) -> Result<CommandOutput<()>, GRangesError> {
+) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
     let seqnames: Vec<String> = genome.keys().cloned().collect();
     let report = Report::new();
@@ -478,7 +478,9 @@ pub fn granges_map(
         operations
             .iter()
             .map(|operation| {
-                operation.run(&mut overlap_scores).into_serializable(&BED_TSV)
+                operation
+                    .run(&mut overlap_scores)
+                    .into_serializable(&BED_TSV)
             })
             .collect::<Vec<SerializableDatumType>>()
     })?;
@@ -495,7 +497,7 @@ pub fn granges_windows(
     step: Option<Position>,
     chop: bool,
     output: Option<impl Into<PathBuf>>,
-    ) -> Result<CommandOutput<()>, GRangesError> {
+) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
     GRangesEmpty::from_windows(&genome, width, step, chop)?.write_to_tsv(output, &BED_TSV)?;
     let report = Report::new();
@@ -509,7 +511,7 @@ pub fn granges_random_bed(
     output: Option<impl Into<PathBuf>>,
     sort: bool,
     bed5: bool,
-    ) -> Result<CommandOutput<()>, GRangesError> {
+) -> Result<CommandOutput<()>, GRangesError> {
     // get the genome info
     let genome = read_seqlens(seqlens)?;
 
