@@ -185,6 +185,20 @@ impl<U> GenomicRangeRecord<U> {
             data,
         }
     }
+
+    /// Consume this [`GenomicRangeRecord`], apply a function to its data
+    /// and return the new [`GenomicRangeRecord`] with different data.
+    pub fn into_map_data<F, V>(self, func: F) -> GenomicRangeRecord<V>
+    where
+        F: Fn(U) -> V,
+    {
+        GenomicRangeRecord {
+            seqname: self.seqname,
+            start: self.start,
+            end: self.end,
+            data: func(self.data),
+        }
+    }
 }
 
 impl<U: Clone> GenericRange for GenomicRangeRecord<U> {
@@ -249,6 +263,7 @@ impl<U: Clone> GenericRangeOperations for GenomicRangeRecord<U> {
 
 /// Represents a genomic range entry without data, e.g. from a BED3 parser.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct GenomicRangeRecordEmpty {
     pub seqname: String,
     pub start: Position,
@@ -503,5 +518,32 @@ mod tests {
         let range_a = RangeEmpty::new(1, 10);
         let range_b = RangeEmpty::new(2, 5);
         assert_eq!(range_a.overlap_width(&range_b), 3);
+    }
+
+    #[test]
+    fn test_distance_or_overlap() {
+        // | 0 | 1 |   |   |
+        // |   |   |   |   | 4 | 5 |
+        let range_a = RangeEmpty::new(0, 2);
+        let range_b = RangeEmpty::new(4, 6);
+        assert_eq!(range_a.distance_or_overlap(&range_b), 2);
+
+        // | 0 | 1 |   |   |
+        // |   |   | 2 | 3 | 4 | 5 |
+        let range_a = RangeEmpty::new(0, 2);
+        let range_b = RangeEmpty::new(2, 6);
+        assert_eq!(range_a.distance_or_overlap(&range_b), 0);
+
+        // | 0 | 1 | 2 |   |
+        // |   |   | 2 | 3 | 4 |   |
+        let range_a = RangeEmpty::new(1, 3);
+        let range_b = RangeEmpty::new(2, 5);
+        assert_eq!(range_a.distance_or_overlap(&range_b), -1);
+
+        // |   | 1 | 2 | 3 | 4 | ...
+        // |   |   | 2 | 3 | 4 |   |
+        let range_a = RangeEmpty::new(1, 10);
+        let range_b = RangeEmpty::new(2, 5);
+        assert_eq!(range_a.distance_or_overlap(&range_b), -3);
     }
 }

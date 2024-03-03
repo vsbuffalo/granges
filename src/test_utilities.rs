@@ -1,14 +1,14 @@
 //! Test cases and test utility functions.
 //!
 
-use std::path::PathBuf;
+use std::{io::BufRead, path::PathBuf};
 
 use crate::{
     commands::granges_random_bed,
     create_granges_with_seqlens,
     error::GRangesError,
     granges::GRangesEmpty,
-    io::parsers::bed::Bed5Addition,
+    io::{parsers::bed::Bed5Addition, InputStream},
     prelude::{GRanges, VecRangesIndexed},
     ranges::{
         coitrees::COITrees,
@@ -199,6 +199,18 @@ pub fn random_bed5file(length: usize) -> NamedTempFile {
     temp_bedfile
 }
 
+// "head" a file -- useful for peaking at temp files in failed tests.
+pub fn head_file(filepath: impl Into<PathBuf>) {
+    let filepath = filepath.into();
+    let file = InputStream::new(filepath);
+    let mut reader = file.reader().unwrap();
+    for _ in 0..10 {
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        dbg!(&line);
+    }
+}
+
 /// Range test case #1
 ///
 /// This also has a corresponding reference sequence
@@ -206,12 +218,12 @@ pub fn random_bed5file(length: usize) -> NamedTempFile {
 ///
 /// Ranges:
 ///   - chr1:
-///      (0, 5, Some(1.1))
-///      (4, 7, Some(8.1))
-///      (10, 17, Some(10.1))
+///      (0, 5, 1.1)
+///      (4, 7, 8.1)
+///      (10, 17, 10.1)
 ///   - chr2:
-///      (10, 20, Some(3.7))
-///      (18, 32, Some(1.1))
+///      (10, 20, 3.7)
+///      (18, 32, 1.1)
 ///
 /// Seqlens: { "chr1" => 30, "chr2" => 100 }
 ///
@@ -239,6 +251,27 @@ pub fn granges_test_case_02() -> GRanges<VecRangesIndexed, Vec<f64>> {
         "chr1" => [(30, 50, 1.1)],
         "chr2" => [(100, 200, 3.7), (250, 300, 1.1)]
     }, seqlens: { "chr1" => 50, "chr2" => 300 })
+}
+
+/// Range test case #3 (modified from #1)
+///
+/// This is a test case with Bed5 data. This is to test
+/// merging iterators, with grouping by feature name.
+///
+/// This matches `tests_data/test_case_03.bed`.
+///
+// Seqlens: { "chr1" => 30, "chr2" => 100 }
+///
+/// Sum of all elements: 24.1
+///
+pub fn granges_test_case_03() -> GRanges<VecRangesIndexed, Vec<Bed5Addition>> {
+    create_granges_with_seqlens!(VecRangesIndexed, Vec<Bed5Addition>, {
+        "chr1" => [(0, 5, Bed5Addition { name: "a".to_string(), score: Some(1.1) }), 
+                   (4, 7, Bed5Addition { name: "b".to_string(), score: Some(8.1) }), 
+                   (10, 17, Bed5Addition { name: "c".to_string(), score: Some(10.1) })],
+        "chr2" => [(10, 20, Bed5Addition { name: "d".to_string(), score: Some(3.7)}), 
+                   (18, 32, Bed5Addition { name: "d".to_string(), score: Some(1.1) })]
+    }, seqlens: { "chr1" => 30, "chr2" => 100 })
 }
 
 #[cfg(feature = "ndarray")]
@@ -280,4 +313,34 @@ pub fn random_array2_sequences(n: usize) -> GenomeMap<Array2<f64>> {
         seqs.insert(&chrom, array).unwrap();
     }
     seqs
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        granges::GRanges, io::Bed5Iterator, seqlens, test_utilities::granges_test_case_01,
+    };
+
+    #[test]
+    fn test_test_case_01() {
+        let genome = seqlens!("chr1" => 30, "chr2" => 100);
+        // yea we're testing test cases. yo dawg.
+        let iter = Bed5Iterator::new("tests_data/test_case_01.bed").unwrap();
+
+        // extract out the score, passing the errors through
+        // NOTE: this is because we don't have a try_fold iterator
+        // method setup yet -- we need that, and when we get it,
+        // we should adjust this
+        let iter_simplified = iter.map(|result| {
+            match result {
+                // this unwrap is for '.'
+                Ok(record) => Ok(record.into_map_data(|bed5_cols| bed5_cols.score.unwrap())),
+                Err(e) => Err(e),
+            }
+        });
+
+        // build a new GRanges
+        let gr = GRanges::from_iter(iter_simplified, &genome).unwrap();
+        assert_eq!(gr, granges_test_case_01());
+    }
 }

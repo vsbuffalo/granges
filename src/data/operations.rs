@@ -33,7 +33,7 @@ pub fn median<F: Float + Sum>(numbers: &mut [F]) -> Option<F> {
 
 /// The (subset of) standard `bedtools map` operations.
 #[derive(Clone, Debug, ValueEnum)]
-pub enum Operation {
+pub enum FloatOperation {
     /// Calculate the sum of all values (a set of zero elements has sum 0.0).
     Sum,
     /// Calculate the sum of all values, but set of zero elements is a missing value, not 0.0.
@@ -50,25 +50,25 @@ pub enum Operation {
     Collapse,
 }
 
-impl Operation {
+impl FloatOperation {
     #[inline(always)]
     pub fn run<T: IntoDatumType + Copy>(&self, data: &mut [T]) -> DatumType
     where
         T: Float + Sum<T> + ToPrimitive + Clone + ToString,
     {
         match self {
-            Operation::Sum => {
+            FloatOperation::Sum => {
                 let sum: T = data.iter().copied().sum();
                 sum.into_data_type()
             }
-            Operation::SumNotEmpty => {
+            FloatOperation::SumNotEmpty => {
                 if data.is_empty() {
                     return DatumType::NoValue;
                 }
                 let sum: T = data.iter().copied().sum();
                 sum.into_data_type()
             }
-            Operation::Min => {
+            FloatOperation::Min => {
                 let min = data
                     .iter()
                     .filter(|x| x.is_finite())
@@ -76,7 +76,7 @@ impl Operation {
                     .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater));
                 min.map_or(DatumType::NoValue, |x| x.into_data_type())
             }
-            Operation::Max => {
+            FloatOperation::Max => {
                 let max = data
                     .iter()
                     .filter(|x| x.is_finite())
@@ -84,7 +84,7 @@ impl Operation {
                     .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Less));
                 max.map_or(DatumType::NoValue, |x| x.into_data_type())
             }
-            Operation::Mean => {
+            FloatOperation::Mean => {
                 if data.is_empty() {
                     DatumType::NoValue
                 } else {
@@ -93,8 +93,10 @@ impl Operation {
                     mean.into_data_type()
                 }
             }
-            Operation::Median => median(data).map_or(DatumType::NoValue, |x| x.into_data_type()),
-            Operation::Collapse => {
+            FloatOperation::Median => {
+                median(data).map_or(DatumType::NoValue, |x| x.into_data_type())
+            }
+            FloatOperation::Collapse => {
                 let collapsed = data
                     .iter()
                     .map(|num| num.to_string())
@@ -104,6 +106,10 @@ impl Operation {
             }
         }
     }
+}
+
+pub enum StringOperation {
+    Collapse,
 }
 
 #[cfg(test)]

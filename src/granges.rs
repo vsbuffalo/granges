@@ -47,7 +47,7 @@ use serde::Serialize;
 use crate::{
     ensure_eq,
     io::tsv::TsvConfig,
-    iterators::GRangesIterator,
+    iterators::{GRangesIterator, GRangesRecordIterator},
     join::{
         CombinedJoinData, CombinedJoinDataBothEmpty, CombinedJoinDataLeftEmpty,
         CombinedJoinDataRightEmpty, JoinData, JoinDataBothEmpty, JoinDataLeftEmpty,
@@ -1315,6 +1315,39 @@ where
         Ok(gr)
     }
 
+    ///// Retain the *intersection* of each left genomic ranges that has at least one
+    ///// overlap with the `right` set of genomic ranges.
+    /////
+    ///// This will retain only the overlapping portion
+    /////
+    ///// This is a type of *filtering join*, in particular a *semi-join*.
+    ///// See Hadley Wickham's [R for Data
+    ///// Science](https://r4ds.hadley.nz/joins.html#filtering-joins) for more information.
+    //pub fn filter_overlaps<'a, M: Clone + 'a, DR: 'a>(
+    //    self,
+    //    // right: &GRanges<COITrees<M>, DR>,
+    //    right: &'a impl AsGRangesRef<'a, COITrees<M>, DR>,
+    //) -> Result<GRangesEmpty<VecRangesEmpty>, GRangesError> {
+    //    let mut gr = GRangesEmpty::new_vec(&self.seqlens());
+
+    //    let right_ref = right.as_granges_ref();
+
+    //    for (seqname, left_ranges) in self.0.ranges.iter() {
+    //        for left_range in left_ranges.iter_ranges() {
+    //            if let Some(right_ranges) = right_ref.ranges.get(seqname) {
+    //                let num_overlaps =
+    //                    right_ranges.count_overlaps(left_range.start(), left_range.end());
+    //                if num_overlaps == 0 {
+    //                    // no overlaps -- skip
+    //                } else {
+    //                    gr.push_range(seqname, left_range.start(), left_range.end())?;
+    //                }
+    //            }
+    //        }
+    //    }
+    //    Ok(gr)
+    //}
+
     /// Retain only genomic ranges that have at least one overlap with the `right`
     /// set of genomic ranges. The whole range will be retained.
     ///
@@ -1471,6 +1504,17 @@ where
     }
 }
 
+impl<R, T> GRanges<R, T>
+where
+    R: IterableRangeContainer,
+    T: IndexedDataContainer,
+{
+    /// Create a new [`GRangesRecordIterator`] to iterate through all the ranges in this [`GRanges`] object.
+    pub fn iter_records(&self) -> GRangesRecordIterator<'_, R, T> {
+        GRangesRecordIterator::new(self)
+    }
+}
+
 /// [`PartialEq`] for [`GRanges`] objects.
 ///
 /// This is a more powerful comparison operator than [`GRanges.is_equal_to()`], since it will first
@@ -1512,6 +1556,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{
+        iterators::GRangesRecordIterator,
         prelude::*,
         test_utilities::{granges_test_case_01, granges_test_case_02, random_vecranges},
         Position,
@@ -1900,5 +1945,14 @@ mod tests {
         let first_chrom = iter.next().unwrap();
         assert_eq!(first_chrom.0, "chr1");
         assert_eq!(*first_chrom.1, vec![2, 5, 13]);
+    }
+
+    #[test]
+    fn test_grange_iter_records() {
+        // main test is in iterators.rs module.
+        let gr = granges_test_case_01();
+        let grr_iter = GRangesRecordIterator::new(&gr);
+        let iter = gr.iter_records();
+        assert!(grr_iter.zip(iter).all(|(a, b)| a == b));
     }
 }

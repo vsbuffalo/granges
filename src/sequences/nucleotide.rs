@@ -459,7 +459,6 @@ mod tests {
             .region_map(&get_len, "chr2", 0, *chr2_len)
             .unwrap();
         assert_eq!(total_len, *chr2_len as usize);
-        dbg!(&reference);
         assert!(reference.is_loaded("chr2"));
     }
 

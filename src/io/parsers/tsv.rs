@@ -1,7 +1,7 @@
 //! Essential TSV parsing functionality, which wraps the blazingly-fast [`csv`] crate's
 //! deserialization method using [`serde`].
 
-use csv::{DeserializeRecordsIntoIter, ReaderBuilder};
+use csv::{DeserializeRecordsIntoIter, Reader, ReaderBuilder};
 use flate2::read::GzDecoder;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer};
@@ -11,6 +11,38 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::error::GRangesError;
+
+/// Build a TSV reader which ignores comment lines, works on gzip-compressed
+/// files, etc.
+///
+/// # ⚠️ Stability
+///
+/// This will likely change into a type with methods.
+///
+/// # Developers Notes
+///
+/// Currently headers are ignored, and not properly passed
+/// to the output. If you need this feature prioritized, please submit a
+/// GitHub issue.
+pub fn build_tsv_reader(
+    filepath: impl Into<PathBuf>,
+) -> Result<Reader<Box<dyn Read>>, GRangesError> {
+    let filepath = filepath.into();
+    let file = File::open(&filepath)?;
+    let is_gzipped = is_gzipped_file(&filepath)?;
+    let stream: Box<dyn Read> = if is_gzipped {
+        Box::new(GzDecoder::new(file))
+    } else {
+        Box::new(file)
+    };
+
+    let reader = ReaderBuilder::new()
+        .delimiter(b'\t')
+        .has_headers(false)
+        .comment(Some(b'#'))
+        .from_reader(stream);
+    Ok(reader)
+}
 
 /// Deserializes some value of type `t` with some possible missing
 /// character `missing_chars` into [`Option<T>`].
@@ -47,7 +79,7 @@ impl<T> std::fmt::Debug for TsvRecordIterator<T> {
 }
 
 /// Check if a file is a gzipped by looking for the magic numbers
-fn is_gzipped_file(file_path: impl Into<PathBuf>) -> io::Result<bool> {
+pub fn is_gzipped_file(file_path: impl Into<PathBuf>) -> io::Result<bool> {
     let mut file = File::open(file_path.into())?;
     let mut buffer = [0; 2];
     file.read_exact(&mut buffer)?;
@@ -68,21 +100,7 @@ where
     /// E.g. for VCF, it would need to be parsed.
     pub fn new(filepath: impl Into<PathBuf>) -> Result<Self, GRangesError> {
         let filepath = filepath.into();
-
-        let file = File::open(&filepath)?;
-        let is_gzipped = is_gzipped_file(&filepath)?;
-        let stream: Box<dyn Read> = if is_gzipped {
-            Box::new(GzDecoder::new(file))
-        } else {
-            Box::new(file)
-        };
-
-        let reader = ReaderBuilder::new()
-            .delimiter(b'\t')
-            .has_headers(false)
-            .comment(Some(b'#'))
-            .from_reader(stream);
-
+        let reader = build_tsv_reader(filepath)?;
         let inner = reader.into_deserialize();
 
         Ok(Self { inner })

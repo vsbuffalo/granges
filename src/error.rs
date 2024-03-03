@@ -75,6 +75,9 @@ pub enum GRangesError {
     #[error("File reading error: {0}. Please check if the file exists and you have permission to read it.")]
     IOError(#[from] std::io::Error),
 
+    #[error("The specified file '{0}' is empty.")]
+    EmptyFile(String),
+
     #[error("File parsing error: {0}")]
     TsvParsingError(#[from] csv::Error),
 

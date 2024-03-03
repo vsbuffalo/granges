@@ -12,11 +12,11 @@
 #[allow(unused)]
 pub struct CommandOutput<U> {
     value: U,
-    report: Report,
+    report: Option<Report>,
 }
 
 impl<U> CommandOutput<U> {
-    pub fn new(value: U, report: Report) -> Self {
+    pub fn new(value: U, report: Option<Report>) -> Self {
         Self { value, report }
     }
 }

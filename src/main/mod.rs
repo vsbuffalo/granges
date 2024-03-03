@@ -3,9 +3,10 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use granges::{
     commands::{
-        granges_adjust, granges_filter, granges_flank, granges_map, granges_windows, ProcessingMode,
+        granges_adjust, granges_filter, granges_flank, granges_map, granges_windows, FilterChroms,
+        Merge, ProcessingMode,
     },
-    data::operations::Operation,
+    data::operations::FloatOperation,
     prelude::GRangesError,
     Position, PositionOffset,
 };
@@ -28,6 +29,8 @@ Subcommands:
   map:       Compute the left grouped overlaps between the left genomic ranges
              and right genomic ranges, and apply one or more operations to the 
              score column of the right BED5 file.
+
+  merge:     Merge ranges that are within a minimum distance of each other.
           
   windows:   Create a set of genomic windows of the specified width (in basepairs),
              stepping the specified step size (the width, by default).
@@ -79,6 +82,7 @@ enum Commands {
         sort: bool,
         // TODO add skip_missing here
     },
+    FilterChroms(FilterChroms),
     /// Filter out the left ranges that do not have overlaps with any
     /// right ranges. This is a "semi-join" in SQL terminology.
     Filter {
@@ -157,8 +161,8 @@ enum Commands {
         right: PathBuf,
 
         /// Operation
-        #[clap(short, long, value_parser = clap::value_parser!(Operation), use_value_delimiter = true, value_delimiter = ',')]
-        func: Vec<Operation>,
+        #[clap(short, long, value_parser = clap::value_parser!(FloatOperation), use_value_delimiter = true, value_delimiter = ',')]
+        func: Vec<FloatOperation>,
 
         /// An optional output file (standard output will be used if not specified)
         #[arg(short, long)]
@@ -169,6 +173,7 @@ enum Commands {
         #[arg(short, long)]
         skip_missing: bool,
     },
+    Merge(Merge),
     /// Create a set of genomic windows ranges using the specified width
     /// and step size, and output to BED3.
     ///
@@ -240,6 +245,7 @@ fn run() -> Result<(), GRangesError> {
             output,
             skip_missing,
         }) => granges_filter(genome, left, right, output.as_ref(), *skip_missing),
+        Some(Commands::FilterChroms(filter_chroms)) => filter_chroms.run(),
         Some(Commands::Flank {
             genome,
             bedfile,
@@ -301,6 +307,8 @@ fn run() -> Result<(), GRangesError> {
                 *skip_missing,
             )
         }
+        // NOTE: this is the new API, so clean!
+        Some(Commands::Merge(merge)) => merge.run(),
         Some(Commands::Windows {
             genome,
             width,

@@ -359,6 +359,7 @@ pub mod granges;
 pub mod io;
 pub mod iterators;
 pub mod join;
+pub mod merging_iterators;
 pub mod ranges;
 pub mod sequences;
 pub mod test_utilities;
@@ -368,6 +369,8 @@ pub mod traits;
 // use in integration tests and other Rust-side command line work
 pub mod commands;
 pub mod reporting;
+
+pub use crate::error::GRangesError;
 
 /// The main position type in GRanges.
 ///
@@ -406,14 +409,23 @@ pub mod prelude {
     pub use crate::io::file::read_seqlens;
     pub use crate::io::tsv::BED_TSV;
     pub use crate::io::{
-        Bed3Iterator, Bed5Iterator, BedlikeIterator, GenomicRangesFile, GenomicRangesParser,
-        TsvRecordIterator,
+        Bed3Iterator, Bed4Iterator, Bed5Iterator, BedlikeIterator, GenomicRangesFile,
+        GenomicRangesParser, TsvRecordIterator,
+    };
+    pub use crate::join::{
+        CombinedJoinData, CombinedJoinDataBothEmpty, CombinedJoinDataLeftEmpty,
+        CombinedJoinDataRightEmpty,
     };
 
     pub use crate::data::DatumType;
     pub use crate::ranges::{
+        coitrees::{COITreesEmpty, COITreesIndexed},
         try_range,
         vec::{VecRangesEmpty, VecRangesIndexed},
+    };
+
+    pub use crate::merging_iterators::{
+        ConditionalMergingResultIterator, MergingEmptyResultIterator, MergingResultIterator,
     };
     pub use crate::traits::{
         AsGRangesRef, GeneralRangeRecordIterator, GenericRange, GenericRangeOperations,

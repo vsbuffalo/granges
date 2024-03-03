@@ -1,15 +1,18 @@
 //! Command functions that implement each of the `granges` subcommands.
+//!
+// TODO: these functions should be methods of the input struct.
 
+use clap::Parser;
+use csv::WriterBuilder;
 use std::{fs::File, io, path::PathBuf};
 
-use csv::WriterBuilder;
-
 use crate::{
-    data::{operations::Operation, SerializableDatumType},
+    data::{operations::FloatOperation, SerializableDatumType},
     io::{
         parsers::{Bed5Iterator, GenomicRangesParser},
         tsv::BED_TSV,
     },
+    merging_iterators::{MergingEmptyResultIterator, MergingResultIterator},
     prelude::*,
     ranges::{operations::adjust_range, GenomicRangeRecord, GenomicRangeRecordEmpty},
     reporting::{CommandOutput, Report},
@@ -111,6 +114,11 @@ pub fn granges_adjust(
                 gr.adjust_ranges(-both, both)
                     .write_to_tsv(output, &BED_TSV)?
             }
+            GenomicRangesParser::Bed4(iter) => {
+                let gr = GRanges::from_iter(iter, &genome)?;
+                gr.adjust_ranges(-both, both)
+                    .write_to_tsv(output, &BED_TSV)?
+            }
             GenomicRangesParser::Bed5(iter) => {
                 let gr = GRanges::from_iter(iter, &genome)?;
                 gr.adjust_ranges(-both, both)
@@ -130,7 +138,7 @@ pub fn granges_adjust(
             }
         }
     }
-    Ok(CommandOutput::new((), report))
+    Ok(CommandOutput::new((), Some(report)))
 }
 
 /// Filters genomic ranges based on overlaps with another set of ranges.
@@ -168,9 +176,6 @@ pub fn granges_filter(
     let left_iter = GenomicRangesFile::parsing_iterator(left_path)?;
     let right_iter = GenomicRangesFile::parsing_iterator(right_path)?;
 
-    // for reporting stuff to the user
-    let report = Report::new();
-
     match (left_iter, right_iter) {
         (GenomicRangesParser::Bed3(left), GenomicRangesParser::Bed3(right)) => {
             let left_gr;
@@ -189,7 +194,7 @@ pub fn granges_filter(
             let semijoin = left_gr.filter_overlaps(&right_gr)?;
             semijoin.write_to_tsv(output, &BED_TSV)?;
 
-            Ok(CommandOutput::new((), report))
+            Ok(CommandOutput::new((), None))
         }
         (GenomicRangesParser::Bed3(left), GenomicRangesParser::Bedlike(right)) => {
             let left_gr;
@@ -211,7 +216,7 @@ pub fn granges_filter(
             let semijoin = left_gr.filter_overlaps(&right_gr)?;
             semijoin.write_to_tsv(output, &BED_TSV)?;
 
-            Ok(CommandOutput::new((), report))
+            Ok(CommandOutput::new((), None))
         }
         (GenomicRangesParser::Bedlike(left), GenomicRangesParser::Bed3(right)) => {
             let left_gr;
@@ -231,7 +236,7 @@ pub fn granges_filter(
             let semijoin = left_gr.filter_overlaps(&right_gr)?;
             semijoin.write_to_tsv(output, &BED_TSV)?;
 
-            Ok(CommandOutput::new((), report))
+            Ok(CommandOutput::new((), None))
         }
         (GenomicRangesParser::Bedlike(left), GenomicRangesParser::Bedlike(right)) => {
             let left_gr;
@@ -254,7 +259,7 @@ pub fn granges_filter(
             let intersection = left_gr.filter_overlaps(&right_gr)?;
             intersection.write_to_tsv(output, &BED_TSV)?;
 
-            Ok(CommandOutput::new((), report))
+            Ok(CommandOutput::new((), None))
         }
         _ => Err(GRangesError::UnsupportedGenomicRangesFileFormat),
     }
@@ -297,8 +302,6 @@ pub fn granges_flank(
     let seqnames: Vec<String> = genome.keys().cloned().collect();
     let ranges_iter = GenomicRangesFile::parsing_iterator(bedfile)?;
 
-    let report = Report::new();
-
     match mode {
         // Note: this is kept for benchmarking, to see how costly building GRanges
         // objects is versus using streaming.
@@ -312,6 +315,16 @@ pub fn granges_flank(
                 gr.flanking_ranges(left, right)?
                     .write_to_tsv(output, &BED_TSV)?
             }
+            GenomicRangesParser::Bed4(iter) => {
+                let gr = if skip_missing {
+                    GRanges::from_iter(iter.retain_seqnames(&seqnames), &genome)?
+                } else {
+                    GRanges::from_iter(iter, &genome)?
+                };
+                gr.flanking_ranges(left, right)?
+                    .write_to_tsv(output, &BED_TSV)?
+            }
+
             GenomicRangesParser::Bed5(_iter) => {
                 unimplemented!()
             }
@@ -372,6 +385,9 @@ pub fn granges_flank(
                         }
                     }
                 }
+                GenomicRangesParser::Bed4(_iter) => {
+                    unimplemented!()
+                }
                 GenomicRangesParser::Bed5(_iter) => {
                     unimplemented!()
                 }
@@ -412,7 +428,7 @@ pub fn granges_flank(
             }
         }
     }
-    Ok(CommandOutput::new((), report))
+    Ok(CommandOutput::new((), None))
 }
 
 /// # Developer Notes
@@ -421,13 +437,12 @@ pub fn granges_map(
     seqlens: impl Into<PathBuf>,
     left_path: &PathBuf,
     right_path: &PathBuf,
-    operations: Vec<Operation>,
+    operations: Vec<FloatOperation>,
     output: Option<&PathBuf>,
     skip_missing: bool,
 ) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
     let seqnames: Vec<String> = genome.keys().cloned().collect();
-    let report = Report::new();
 
     let left_iter = Bed3Iterator::new(left_path)?;
     let right_iter = Bed5Iterator::new(right_path)?;
@@ -487,7 +502,7 @@ pub fn granges_map(
 
     result_gr.write_to_tsv(output, &BED_TSV)?;
 
-    Ok(CommandOutput::new((), report))
+    Ok(CommandOutput::new((), None))
 }
 
 /// Generate a BED3 file of genomic windows.
@@ -500,8 +515,7 @@ pub fn granges_windows(
 ) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
     GRangesEmpty::from_windows(&genome, width, step, chop)?.write_to_tsv(output, &BED_TSV)?;
-    let report = Report::new();
-    Ok(CommandOutput::new((), report))
+    Ok(CommandOutput::new((), None))
 }
 
 /// Generate a random BED-like file with genomic ranges.
@@ -529,6 +543,144 @@ pub fn granges_random_bed(
         gr.write_to_tsv(output, &BED_TSV)?;
     };
 
-    let report = Report::new();
-    Ok(CommandOutput::new((), report))
+    Ok(CommandOutput::new((), None))
+}
+
+/// Merges all the genomic ranges if they overlap by `distance`.
+#[derive(Parser)]
+pub struct Merge {
+    /// The input BED-like TSV file to merge.
+    #[arg(short, long, required = true)]
+    bedfile: PathBuf,
+
+    /// The minimum distance at which to merge ranges. Like `bedtools merge`,
+    /// `--distance 0` will merge "book-ended" ranges. Negative numbers
+    /// will only merge ranges that overlap by that degree of overlap.
+    #[clap(short, long, default_value_t = 0)]
+    distance: PositionOffset,
+
+    ///// Whether to "group by" feature name, i.e. overlapping ranges
+    ///// with different feature names will not be merged.
+    //#[clap(short, long)]
+    //group_features: usize,
+    /// Operation to do to summarize the score column.
+    #[clap(short, long, value_parser = clap::value_parser!(FloatOperation))]
+    func: Option<FloatOperation>,
+
+    /// An optional output file (standard output will be used if not specified)
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+}
+
+impl Merge {
+    // TODO optional genome file for validation?
+    pub fn run(&self) -> Result<CommandOutput<()>, GRangesError> {
+        let bedfile = &self.bedfile;
+        let distance = &self.distance;
+        let ranges_iter = GenomicRangesFile::parsing_iterator(bedfile)?;
+        let func = &self.func;
+
+        let writer_boxed: Box<dyn io::Write> = match &self.output {
+            Some(path) => Box::new(File::create(path)?),
+            None => Box::new(io::stdout()),
+        };
+        let mut writer = WriterBuilder::new()
+            .delimiter(b'\t')
+            .has_headers(false)
+            .from_writer(writer_boxed);
+
+        match ranges_iter {
+            GenomicRangesParser::Bed3(iter) => {
+                let merging_iter = MergingEmptyResultIterator::new(iter, *distance);
+                for result in merging_iter {
+                    let record = result?;
+                    writer.serialize(record)?;
+                }
+                Ok(CommandOutput::new((), None))
+            }
+            GenomicRangesParser::Bed4(iter) => {
+                let merging_iter = MergingResultIterator::new(iter, *distance, |data| {
+                    data.into_iter()
+                        .map(|x| x.name)
+                        .collect::<Vec<_>>()
+                        .join(",")
+                });
+                for result in merging_iter {
+                    let record = result?;
+                    writer.serialize(record)?;
+                }
+                Ok(CommandOutput::new((), None))
+            }
+            GenomicRangesParser::Bed5(iter) => {
+                // merging iterator, where we extract scores and apply an operation to all merged genomic ranges' scores
+                let merging_iter = MergingResultIterator::new(iter, *distance, |data| {
+                    let mut scores: Vec<f64> = data
+                        .into_iter()
+                        .filter_map(|bed5_cols| bed5_cols.score)
+                        .collect();
+                    // this unwrap is safe -- if func is None, we use Bed3
+                    func.as_ref().unwrap().run(&mut scores)
+                });
+
+                for result in merging_iter {
+                    let record = result?;
+                    writer.serialize(record)?;
+                }
+                Ok(CommandOutput::new((), None))
+            }
+            GenomicRangesParser::Bedlike(_iter) => {
+                todo!()
+            }
+            GenomicRangesParser::Unsupported => {
+                Err(GRangesError::UnsupportedGenomicRangesFileFormat)
+            }
+        }
+    }
+}
+
+/// Filter out ranges not in the specified "genome" file.
+#[derive(Parser)]
+pub struct FilterChroms {
+    /// A TSV genome file of chromosome names and their lengths
+    #[arg(short, long, required = true)]
+    genome: PathBuf,
+
+    /// The input BED file.
+    #[arg(short, long, required = true)]
+    bedfile: PathBuf,
+
+    /// An optional output file (standard output will be used if not specified)
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+}
+
+impl FilterChroms {
+    pub fn run(&self) -> Result<CommandOutput<()>, GRangesError> {
+        let bedfile = &self.bedfile;
+        let genome = read_seqlens(&self.genome)?;
+
+        let writer_boxed: Box<dyn io::Write> = match &self.output {
+            Some(path) => Box::new(File::create(path)?),
+            None => Box::new(io::stdout()),
+        };
+
+        let mut writer = WriterBuilder::new()
+            .delimiter(b'\t')
+            .has_headers(false)
+            .from_writer(writer_boxed);
+
+        let bedlike_iterator = BedlikeIterator::new(bedfile)?;
+
+        // If we don't need to sort, use iterator-based streaming processing.
+        for record in bedlike_iterator {
+            let range = record?;
+            let seqname = &range.seqname;
+            let passes_filter = genome.contains_key(seqname);
+            if passes_filter {
+                writer.serialize(range)?;
+            }
+        }
+
+        Ok(CommandOutput::new((), None))
+    }
 }

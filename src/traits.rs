@@ -16,7 +16,7 @@ use crate::{
     join::LeftGroupedJoin,
     prelude::VecRangesIndexed,
     ranges::GenomicRangeRecord,
-    Position,
+    Position, PositionOffset,
 };
 
 /// Traits for [`GRanges`] types that can be modified.
@@ -79,6 +79,27 @@ pub trait GenericRange: Clone {
         overlap_end.saturating_sub(overlap_start)
     }
 
+    fn distance_or_overlap<R: GenericRange>(&self, other: &R) -> PositionOffset {
+        if self.end() > other.start() && self.start() < other.end() {
+            // The ranges overlap -- return how much as a negative number
+            // TODO/OPTIMIZE: is this slow?
+            let overlap: PositionOffset = self.overlap_width(other).try_into().unwrap();
+            -overlap
+        } else if self.end() == other.start() || self.start() == other.end() {
+            // The ranges are bookends (adjacent to each other)
+            0
+        } else {
+            // The ranges do not overlap and are not bookends; calculate the distance
+            // If `self` is entirely before `other`, the distance is `other.start() - self.end()`.
+            // If `self` is entirely after `other`, the distance is `self.start() - other.end()`.
+            // Using `max` to ensure we always get the positive distance regardless of range order
+            std::cmp::max(
+                other.start().saturating_sub(self.end()),
+                self.start().saturating_sub(other.end()),
+            ) as PositionOffset
+        }
+    }
+
     /// Return a tuple of the range created by an overlap with another range; `None` if no overlap.
     fn overlap_range<R: GenericRange>(&self, other: &R) -> Option<(Position, Position)> {
         let overlap_start = std::cmp::max(self.start(), other.start());
@@ -94,6 +115,51 @@ pub trait GenericRange: Clone {
     /// Return a tuple version of this range.
     fn as_tuple(&self) -> (Position, Position, Option<usize>) {
         (self.start(), self.end(), self.index())
+    }
+}
+
+/// The [`GenericGenomicRange`] extends sequence name comparison and related
+/// functionality to [`GenericRange`].
+// TODO: to do this right and have it be useful we need to push
+// the seqname indices lower into parsing, e.g. so this works for key types
+// like GenericGenomicRange.
+pub trait GenericGenomicRange: GenericRange {
+    /// Returns the sequence name index associated with the range
+    fn seqname_index(&self) -> usize;
+
+    /// Calculate how many basepairs overlap this range and another, considering seqname_index
+    fn genomic_overlap_width<R: GenericGenomicRange>(&self, other: &R) -> Position {
+        if self.seqname_index() != other.seqname_index() {
+            return 0; // No overlap if seqname_index is different
+        }
+
+        let overlap_start = std::cmp::max(self.start(), other.start());
+        let overlap_end = std::cmp::min(self.end(), other.end());
+
+        if overlap_start >= overlap_end {
+            0
+        } else {
+            overlap_end.saturating_sub(overlap_start)
+        }
+    }
+
+    /// Return a tuple of the range created by an overlap with another range, considering seqname_index
+    fn genomic_overlap_range<R: GenericGenomicRange>(
+        &self,
+        other: &R,
+    ) -> Option<(Position, Position)> {
+        if self.seqname_index() != other.seqname_index() {
+            return None; // No overlap if seqname_index is different
+        }
+
+        let overlap_start = std::cmp::max(self.start(), other.start());
+        let overlap_end = std::cmp::min(self.end(), other.end());
+
+        if overlap_start <= overlap_end {
+            Some((overlap_start, overlap_end))
+        } else {
+            None
+        }
     }
 }
 

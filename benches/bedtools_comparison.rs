@@ -357,8 +357,51 @@ fn bench_map_all_operations(c: &mut Criterion) {
     });
 }
 
+fn bench_merge_empty(c: &mut Criterion) {
+    // create the benchmark group
+    let mut group = c.benchmark_group("merge_empty");
+
+    // create the test data
+    let input_bedfile = random_bed3file(BED_LENGTH);
+
+    // the distance
+    let distance = 100;
+
+    // configure the sample size for the group
+    group.sample_size(10);
+
+    group.bench_function("bedtools_merge", |b| {
+        b.iter(|| {
+            let bedtools_output = Command::new("bedtools")
+                .arg("merge")
+                .arg("-i")
+                .arg(input_bedfile.path())
+                .arg("-d")
+                .arg(distance.to_string())
+                .output()
+                .expect("bedtools merge failed");
+            assert!(bedtools_output.status.success());
+        });
+    });
+
+    group.bench_function("granges_merge", |b| {
+        b.iter(|| {
+            let granges_output = Command::new(granges_binary_path())
+                .arg("merge")
+                .arg("--bedfile")
+                .arg(input_bedfile.path())
+                .arg("-d")
+                .arg(distance.to_string())
+                .output()
+                .expect("bedtools merge failed");
+            assert!(granges_output.status.success());
+        });
+    });
+}
+
 criterion_group!(
     benches,
+    bench_merge_empty,
     bench_filter_adjustment,
     bench_range_adjustment,
     bench_flank,
