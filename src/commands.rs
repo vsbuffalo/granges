@@ -3,14 +3,20 @@
 // TODO: these functions should be methods of the input struct.
 
 use clap::Parser;
-use csv::WriterBuilder;
-use std::{fs::File, io, path::PathBuf};
+use csv::{Writer, WriterBuilder};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{self, Write},
+    path::PathBuf,
+};
 
 use crate::{
     data::{operations::FloatOperation, SerializableDatumType},
     io::{
         parsers::{Bed5Iterator, GenomicRangesParser},
         tsv::BED_TSV,
+        TsvConfig,
     },
     merging_iterators::{MergingEmptyResultIterator, MergingResultIterator},
     prelude::*,
@@ -19,6 +25,48 @@ use crate::{
     test_utilities::{random_granges, random_granges_mock_bed5},
     Position, PositionOffset,
 };
+
+/// Build a new TSV writer
+pub fn build_tsv_writer(
+    output: Option<impl Into<PathBuf>>,
+) -> Result<Writer<Box<dyn Write>>, GRangesError> {
+    let output = output.map(|path| path.into());
+    let writer_boxed: Box<dyn io::Write> = match &output {
+        Some(path) => Box::new(File::create(path)?),
+        None => Box::new(io::stdout()),
+    };
+
+    let writer = WriterBuilder::new()
+        .delimiter(b'\t')
+        .has_headers(false)
+        .from_writer(writer_boxed);
+
+    Ok(writer)
+}
+
+/// Build a new TSV writer with config, i.e. for manual headers, metadata etc.
+// TODO: use proper builder pattern here and above?
+pub fn build_tsv_writer_with_config(
+    output: Option<impl Into<PathBuf>>,
+    config: &TsvConfig,
+) -> Result<Writer<Box<dyn Write>>, GRangesError> {
+    let output = output.map(|path| path.into());
+    let mut writer_boxed: Box<dyn io::Write> = match &output {
+        Some(path) => Box::new(File::create(path)?),
+        None => Box::new(io::stdout()),
+    };
+
+    if let Some(headers) = &config.headers {
+        writeln!(writer_boxed, "{}", headers.join("\t"))?;
+    }
+
+    let writer = WriterBuilder::new()
+        .delimiter(b'\t')
+        .has_headers(false)
+        .from_writer(writer_boxed);
+
+    Ok(writer)
+}
 
 /// An `enum` to indicate whether an streaming or in-memory algorithm should be used.
 #[derive(Clone)]
@@ -60,15 +108,7 @@ pub fn granges_adjust(
 ) -> Result<CommandOutput<()>, GRangesError> {
     let genome = read_seqlens(seqlens)?;
 
-    let writer_boxed: Box<dyn io::Write> = match output {
-        Some(path) => Box::new(File::create(path)?),
-        None => Box::new(io::stdout()),
-    };
-
-    let mut writer = WriterBuilder::new()
-        .delimiter(b'\t')
-        .has_headers(false)
-        .from_writer(writer_boxed);
+    let mut writer = build_tsv_writer(output)?;
 
     // For reporting stuff to the user.
     let mut report = Report::new();
@@ -342,15 +382,7 @@ pub fn granges_flank(
             }
         },
         ProcessingMode::Streaming => {
-            let writer_boxed: Box<dyn io::Write> = match output {
-                Some(path) => Box::new(File::create(path)?),
-                None => Box::new(io::stdout()),
-            };
-
-            let mut writer = WriterBuilder::new()
-                .delimiter(b'\t')
-                .has_headers(false)
-                .from_writer(writer_boxed);
+            let mut writer = build_tsv_writer(output)?;
 
             match ranges_iter {
                 // FIXME: code redundancy. But too early now to design traits, etc.
@@ -580,14 +612,7 @@ impl Merge {
         let ranges_iter = GenomicRangesFile::parsing_iterator(bedfile)?;
         let func = &self.func;
 
-        let writer_boxed: Box<dyn io::Write> = match &self.output {
-            Some(path) => Box::new(File::create(path)?),
-            None => Box::new(io::stdout()),
-        };
-        let mut writer = WriterBuilder::new()
-            .delimiter(b'\t')
-            .has_headers(false)
-            .from_writer(writer_boxed);
+        let mut writer = build_tsv_writer(self.output.as_ref())?;
 
         match ranges_iter {
             GenomicRangesParser::Bed3(iter) => {
@@ -658,18 +683,9 @@ impl FilterChroms {
     pub fn run(&self) -> Result<CommandOutput<()>, GRangesError> {
         let bedfile = &self.bedfile;
         let genome = read_seqlens(&self.genome)?;
-
-        let writer_boxed: Box<dyn io::Write> = match &self.output {
-            Some(path) => Box::new(File::create(path)?),
-            None => Box::new(io::stdout()),
-        };
-
-        let mut writer = WriterBuilder::new()
-            .delimiter(b'\t')
-            .has_headers(false)
-            .from_writer(writer_boxed);
-
         let bedlike_iterator = BedlikeIterator::new(bedfile)?;
+
+        let mut writer = build_tsv_writer(self.output.as_ref())?;
 
         // If we don't need to sort, use iterator-based streaming processing.
         for record in bedlike_iterator {
@@ -679,6 +695,137 @@ impl FilterChroms {
             if passes_filter {
                 writer.serialize(range)?;
             }
+        }
+
+        Ok(CommandOutput::new((), None))
+    }
+}
+
+// tranpose two nested vecs
+// thanks to this clever solution: https://stackoverflow.com/a/64499219/147427
+fn transpose<T>(v: Vec<Vec<T>>) -> Vec<Vec<T>> {
+    assert!(!v.is_empty());
+    let len = v[0].len();
+    let mut iters: Vec<_> = v.into_iter().map(|n| n.into_iter()).collect();
+    (0..len)
+        .map(|_| {
+            iters
+                .iter_mut()
+                .map(|n| n.next().unwrap())
+                .collect::<Vec<T>>()
+        })
+        .collect()
+}
+
+/// Histogram a set of features for a defined window size.
+///
+/// # Tips
+/// This is useful for a quick exploratory look at feature density
+/// by window, e.g. with
+///
+///  $ hist-features --bedfile hg38_ncbiRefSeq.bed.gz --width 1000 --genome \
+///    hg38_seqlens.tsv --headers  | xsv table -d'\t' | less
+///
+/// The xsv tool (https://github.com/BurntSushi/xsv) is useful for visualizing
+/// the results more clearly.
+#[derive(Parser)]
+pub struct HistFeatures {
+    /// A TSV genome file of chromosome names and their lengths
+    #[arg(short, long, required = true)]
+    genome: PathBuf,
+
+    /// The input BED file.
+    #[arg(short, long, required = true)]
+    bedfile: PathBuf,
+
+    /// Width (in basepairs) of each window.
+    #[arg(short, long)]
+    width: Position,
+
+    /// Step width (by default: window size).
+    #[arg(short, long)]
+    step: Option<Position>,
+
+    /// If last window remainder is shorter than width, remove?
+    #[arg(short, long)]
+    chop: bool,
+
+    /// Whether to output the results as a TSV with headers.
+    #[arg(short = 'l', long)]
+    headers: bool,
+
+    /// An optional output file (standard output will be used if not specified)
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+}
+
+impl HistFeatures {
+    pub fn run(&self) -> Result<CommandOutput<()>, GRangesError> {
+        let bedfile = &self.bedfile;
+        let genome = read_seqlens(&self.genome)?;
+
+        let bed4_iter = Bed4Iterator::new(bedfile)?;
+
+        // Split the elements in the iterator by feature into multiple GRanges objects.
+        let mut records_by_features: HashMap<String, Vec<GenomicRangeRecordEmpty>> = HashMap::new();
+        for result in bed4_iter {
+            let range = result?;
+            let feature = &range.data.name;
+            let vec = records_by_features.entry(feature.to_string()).or_default();
+            vec.push(range.into_empty()) // drop the feature, since we're hashing on it
+        }
+
+        // Load all the *merged* split records into memory as interval trees.
+        let mut gr_by_features: HashMap<String, GRangesEmpty<COITreesEmpty>> = HashMap::new();
+        for (feature, ranges) in records_by_features.into_iter() {
+            // doing a streaming merge of each feature; bookend merge
+            let merging_iter = MergingEmptyIterator::new(ranges, 0);
+
+            // load into memory and convert to interval trees
+            let gr = GRangesEmpty::from_iter_ok(merging_iter, &genome)?.into_coitrees()?;
+
+            assert!(!gr_by_features.contains_key(&feature));
+            gr_by_features.insert(feature, gr);
+        }
+
+        // Now, create windows.
+        let windows = GRangesEmpty::from_windows(&genome, self.width, self.step, self.chop)?;
+
+        let features: Vec<_> = gr_by_features.keys().cloned().collect();
+        let mut feature_matrix = Vec::new();
+        for (_feature, gr) in gr_by_features.into_iter() {
+            // find the features that overlap each window
+            // TODO/OPTIMIZE: how costly is this clone?
+            let window_counts = windows.clone()
+                .left_overlaps(&gr)?
+                .map_joins(|joins| {
+                    // these are merged, so this is the number of *unique* basepairs
+                    let total_overlaps: Position = joins.join.overlaps().iter().cloned().sum();
+                    total_overlaps
+                })?
+                .take_data()?;
+            feature_matrix.push(window_counts);
+        }
+
+        let feature_matrix = transpose(feature_matrix);
+
+        // Unite the windows with the feature matrix.
+        let windows = GRangesEmpty::from_windows(&genome, self.width, self.step, self.chop)?;
+        let windows = windows.into_granges_data(feature_matrix)?;
+
+        // Write everything.
+        if !self.headers {
+            // we have to *manually* add headers (serde needs flat structs otherwise)
+            windows.write_to_tsv(self.output.as_ref(), &BED_TSV)?;
+        } else {
+            let mut headers = vec!["chrom".to_string(), "start".to_string(), "end".to_string()];
+            headers.extend(features);
+
+            let config = TsvConfig {
+                no_value_string: "NA".to_string(),
+                headers: Some(headers),
+            };
+            windows.write_to_tsv(self.output.as_ref(), &config)?;
         }
 
         Ok(CommandOutput::new((), None))

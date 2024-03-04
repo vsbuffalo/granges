@@ -37,14 +37,14 @@
 //! [`BedlikeIterator`]: crate::io::parsers::BedlikeIterator
 //! [`GRanges::into_coitrees`]: crate::granges::GRanges::into_coitrees
 
-use std::{collections::HashSet, fs::File, io, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf};
 
-use csv::WriterBuilder;
 use genomap::GenomeMap;
 use indexmap::IndexMap;
 use serde::Serialize;
 
 use crate::{
+    commands::build_tsv_writer_with_config,
     ensure_eq,
     io::tsv::TsvConfig,
     iterators::{GRangesIterator, GRangesRecordIterator},
@@ -139,19 +139,20 @@ where
     }
 }
 
-impl<C, T> GRanges<C, T>
-where
-    C: RangeContainer + Clone,
-{
-    /// Create a new [`GRanges`] object by cloning the ranges of this one,
-    /// and associating the supplied data with it (this consumes the data).
-    pub fn clone_with_data<D>(&self, data: Option<D>) -> GRanges<C, D> {
-        GRanges {
-            ranges: self.ranges.clone(),
-            data,
-        }
-    }
-}
+// NOTE: not safe -- not used, so removed.
+// impl<C, T> GRanges<C, T>
+// where
+//     C: RangeContainer + Clone,
+// {
+//     /// Create a new [`GRanges`] object by cloning the ranges of this one,
+//     /// and associating the supplied data with it (this consumes the data).
+//     pub fn clone_with_data<D>(&self, data: Option<D>) -> GRanges<C, D> {
+//         GRanges {
+//             ranges: self.ranges.clone(),
+//             data,
+//         }
+//     }
+// }
 
 impl<C> GRangesEmpty<C>
 where
@@ -231,15 +232,7 @@ where
         output: Option<impl Into<PathBuf>>,
         config: &TsvConfig,
     ) -> Result<(), GRangesError> {
-        let writer_boxed: Box<dyn io::Write> = match output {
-            Some(path) => Box::new(File::create(path.into())?),
-            None => Box::new(io::stdout()),
-        };
-
-        let mut writer = WriterBuilder::new()
-            .delimiter(b'\t')
-            .has_headers(config.headers)
-            .from_writer(writer_boxed);
+        let mut writer = build_tsv_writer_with_config(output, config)?;
 
         for range in self.iter_ranges() {
             let record = range.to_record(
@@ -267,15 +260,7 @@ impl<'a, R: IterableRangeContainer> GenomicRangesTsvSerialize<'a, R> for GRanges
         output: Option<impl Into<PathBuf>>,
         config: &TsvConfig,
     ) -> Result<(), GRangesError> {
-        let writer_boxed: Box<dyn io::Write> = match output {
-            Some(path) => Box::new(File::create(path.into())?),
-            None => Box::new(io::stdout()),
-        };
-
-        let mut writer = WriterBuilder::new()
-            .delimiter(b'\t')
-            .has_headers(config.headers)
-            .from_writer(writer_boxed);
+        let mut writer = build_tsv_writer_with_config(output, config)?;
 
         for range in self.iter_ranges() {
             let record = range.to_record_empty::<()>(&self.seqnames());
@@ -327,6 +312,37 @@ impl<R: AdjustableGenericRange, T> GRanges<VecRanges<R>, T> {
             .values_mut()
             .for_each(|ranges| ranges.adjust_ranges(start_delta, end_delta));
         self
+    }
+}
+
+impl<C: IterableRangeContainer> GRangesEmpty<C>
+where
+    C: IterableRangeContainer<RangeType = RangeEmpty>,
+{
+    /// Consume this [`GRangesEmpty`], uniting it with a [`Vec<U>`] data container
+    /// by indexing the data in order
+    pub fn into_granges_data<U>(
+        self,
+        data: Vec<U>,
+    ) -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError> {
+        if self.len() != data.len() {
+            return Err(GRangesError::InvalidDataContainer(self.len(), data.len()));
+        }
+        let seqlens = self.seqlens();
+        let mut gr: GRanges<VecRangesIndexed, Vec<U>> = GRanges::new_vec(&seqlens);
+
+        let mut index = 0;
+        for (seqname, ranges_empty) in self.0.ranges.iter() {
+            // unwrap should be safe, since seqname is produced from ranges iterator.
+            for range_empty in ranges_empty.iter_ranges() {
+                gr.push_range_with_index(seqname, range_empty.start, range_empty.end, index)?;
+                index += 1;
+            }
+        }
+        Ok(GRanges {
+            ranges: gr.take_ranges(),
+            data: Some(data),
+        })
     }
 }
 
@@ -924,6 +940,7 @@ where
     ) -> Result<Self::Output, GRangesError> {
         let mut gr: GRanges<VecRangesIndexed, JoinData<(), ()>> =
             GRanges::new_vec(&self.0.seqlens());
+        gr.data = Some(JoinData::new((), &()));
 
         for (seqname, left_ranges) in self.0.ranges.iter() {
             for left_range in left_ranges.iter_ranges() {
@@ -1170,6 +1187,46 @@ impl<T> GRanges<VecRanges<RangeIndexed>, T> {
 impl<U> GRanges<VecRangesIndexed, Vec<U>> {
     /// Create a new [`GRanges<VecRangesIndexed, Vec<U>>`] object from an iterator over
     /// [`GenomicRangeRecord<U>`] records.
+    pub fn from_iter_ok<I>(
+        iter: I,
+        seqlens: &IndexMap<String, Position>,
+    ) -> Result<GRanges<VecRangesIndexed, Vec<U>>, GRangesError>
+    where
+        I: Iterator<Item = GenomicRangeRecord<U>>,
+    {
+        let mut gr = GRanges::new_vec(seqlens);
+        for entry in iter {
+            gr.push_range(&entry.seqname, entry.start, entry.end, entry.data)?;
+        }
+        Ok(gr)
+    }
+}
+
+impl GRangesEmpty<VecRangesEmpty> {
+    /// Create a new [`GRangesEmpty`] object from an iterator over
+    /// [`GenomicRangeRecordEmpty`] records.
+    pub fn from_iter_ok<I>(
+        iter: I,
+        seqlens: &IndexMap<String, Position>,
+    ) -> Result<GRangesEmpty<VecRangesEmpty>, GRangesError>
+    where
+        I: Iterator<Item = GenomicRangeRecordEmpty>,
+    {
+        let mut gr = GRangesEmpty::new_vec(seqlens);
+        for entry in iter {
+            gr.push_range(&entry.seqname, entry.start, entry.end)?;
+        }
+        Ok(gr)
+    }
+}
+
+impl<U> GRanges<VecRangesIndexed, Vec<U>> {
+    /// Create a new [`GRanges<VecRangesIndexed, Vec<U>>`] object from a parsing iterator over
+    /// [`Result<GenomicRangeRecord<U>, GRangesError>`] records.
+    ///
+    /// # ⚠️ Stability
+    ///
+    /// This may be renamed.
     pub fn from_iter<I>(
         iter: I,
         seqlens: &IndexMap<String, Position>,
@@ -1187,8 +1244,12 @@ impl<U> GRanges<VecRangesIndexed, Vec<U>> {
 }
 
 impl GRangesEmpty<VecRangesEmpty> {
-    /// Create a new [`GRanges<VecRangesEmpty, Vec<U>>`] object from an iterator over
-    /// [`GenomicRangeRecord`] records.
+    /// Create a new [`GRanges<VecRangesEmpty, Vec<U>>`] object from a parsing iterator over
+    /// [`Result<GenomicRangeRecord, GRangesError>`] records.
+    ///
+    /// # ⚠️ Stability
+    ///
+    /// This may be renamed.
     pub fn from_iter<I>(
         iter: I,
         seqlens: &IndexMap<String, Position>,
@@ -1811,6 +1872,25 @@ mod tests {
         assert_eq!(join_iter.next().unwrap().num_overlaps(), 2);
         assert_eq!(join_iter.next().unwrap().num_overlaps(), 1);
         // rest are empty TODO should check
+    }
+
+    #[test]
+    fn test_left_with_data_both_empty() {
+        let sl = seqlens!("chr1" => 50);
+        let mut left_gr: GRanges<VecRangesIndexed, Vec<f64>> = GRanges::new_vec(&sl);
+        left_gr.push_range("chr1", 1, 2, 1.1).unwrap();
+        left_gr.push_range("chr1", 5, 7, 2.8).unwrap();
+        let left_gr = left_gr.into_granges_empty().unwrap();
+
+        let windows = GRangesEmpty::from_windows(&sl, 10, None, true)
+            .unwrap()
+            .into_coitrees()
+            .unwrap();
+
+        let joined_results = left_gr.left_overlaps(&windows).unwrap();
+
+        // check the joined results
+        assert_eq!(joined_results.len(), 2)
     }
 
     #[test]

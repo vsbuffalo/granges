@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use granges::{
     commands::{
         granges_adjust, granges_filter, granges_flank, granges_map, granges_windows, FilterChroms,
-        Merge, ProcessingMode,
+        HistFeatures, Merge, ProcessingMode,
     },
     data::operations::FloatOperation,
     prelude::GRangesError,
@@ -142,6 +142,7 @@ enum Commands {
         #[arg(long)]
         in_mem: bool,
     },
+    HistFeatures(HistFeatures),
     /// Do a "left grouped join", on the specified left and right genomic ranges,
     /// and apply one or more functions to the BED5 scores for all right genomic
     /// ranges.
@@ -308,6 +309,7 @@ fn run() -> Result<(), GRangesError> {
             )
         }
         // NOTE: this is the new API, so clean!
+        Some(Commands::HistFeatures(hist_features)) => hist_features.run(),
         Some(Commands::Merge(merge)) => merge.run(),
         Some(Commands::Windows {
             genome,

@@ -6,7 +6,7 @@ lazy_static! {
     /// The standard BED format TSV configuration.
     pub static ref BED_TSV: TsvConfig = TsvConfig {
         no_value_string: ".".to_string(),
-        headers: false,
+        headers: None,
     };
 }
 
@@ -16,5 +16,5 @@ lazy_static! {
 #[derive(Debug, Clone)]
 pub struct TsvConfig {
     pub no_value_string: String,
-    pub headers: bool,
+    pub headers: Option<Vec<String>>,
 }

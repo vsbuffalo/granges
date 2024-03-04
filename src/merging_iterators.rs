@@ -11,6 +11,63 @@ use crate::{
     PositionOffset,
 };
 
+// Create a new [`MergingEmptyIterator`], which work over data-less
+// "empty" ranges ([`GenomicRangeRecordEmpty`] and merge them based on their
+// distance or degree of overlap.
+pub struct MergingEmptyIterator<I>
+where
+    I: IntoIterator<Item = GenomicRangeRecordEmpty>,
+{
+    last_range: Option<GenomicRangeRecordEmpty>,
+    inner: <I as IntoIterator>::IntoIter,
+    minimum_distance: PositionOffset,
+}
+
+impl<I> MergingEmptyIterator<I>
+where
+    I: IntoIterator<Item = GenomicRangeRecordEmpty>,
+{
+    pub fn new(inner: I, minimum_distance: PositionOffset) -> Self {
+        Self {
+            last_range: None,
+            inner: inner.into_iter(),
+            minimum_distance,
+        }
+    }
+}
+
+impl<I> Iterator for MergingEmptyIterator<I>
+where
+    I: IntoIterator<Item = GenomicRangeRecordEmpty>,
+{
+    type Item = GenomicRangeRecordEmpty;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        for next_range in self.inner.by_ref() {
+            if let Some(last_range) = &mut self.last_range {
+                let on_same_chrom = last_range.seqname == next_range.seqname;
+                if on_same_chrom
+                    && last_range.distance_or_overlap(&next_range) <= self.minimum_distance
+                {
+                    last_range.end = max(last_range.end, next_range.end);
+                } else {
+                    let return_range = last_range.clone();
+                    self.last_range = Some(next_range);
+                    return Some(return_range);
+                }
+            } else {
+                self.last_range = Some(next_range);
+                // If this is the first range, we continue looking for more to potentially merge with.
+                continue;
+            }
+        }
+
+        // If we get here, the inner iterator is exhausted.
+        // We need to return the last_range if it exists and make sure it's cleared for subsequent calls.
+        self.last_range.take()
+    }
+}
+
 // Create a new [`MergingEmptyResultIterator`], which work over data-less
 // "empty" ranges ([`GenomicRangeRecordEmpty`] and merge them based on their
 // distance or degree of overlap.
@@ -309,6 +366,8 @@ mod tests {
         merging_iterators::{ConditionalMergingResultIterator, MergingEmptyResultIterator},
         ranges::{GenomicRangeRecord, GenomicRangeRecordEmpty},
     };
+
+    // TODO/TEST we need non-result iterator test.
 
     use super::MergingResultIterator;
 

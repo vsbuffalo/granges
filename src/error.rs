@@ -140,6 +140,9 @@ pub enum GRangesError {
     #[error("The GRanges object is invalid because it lacks an associated data container. Ensure data is loaded or associated with the GRanges object before attempting operations that require data.")]
     NoDataContainer,
 
+    #[error("The GRangesEmpty object cannot be united with this data because they are different lengths ({0} ≠ {1}")]
+    InvalidDataContainer(usize, usize),
+
     #[error("The supplied GRanges object and data container cannot be united into a new GRanges since they have differing lengths.")]
     IncompatableGRangesAndData,
 

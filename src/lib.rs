@@ -425,7 +425,8 @@ pub mod prelude {
     };
 
     pub use crate::merging_iterators::{
-        ConditionalMergingResultIterator, MergingEmptyResultIterator, MergingResultIterator,
+        ConditionalMergingResultIterator, MergingEmptyIterator, MergingEmptyResultIterator,
+        MergingResultIterator,
     };
     pub use crate::traits::{
         AsGRangesRef, GeneralRangeRecordIterator, GenericRange, GenericRangeOperations,

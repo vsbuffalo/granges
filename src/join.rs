@@ -72,6 +72,11 @@ impl LeftGroupedJoin {
     pub fn num_overlaps(&self) -> usize {
         self.overlaps.len()
     }
+
+    /// Retrieve the right overlaps.
+    pub fn overlaps(&self) -> &Vec<Position> {
+        &self.overlaps
+    }
 }
 
 /// [`JoinData`] contains a [`Vec<LeftGroupedJoin>`] of all overlap joins,

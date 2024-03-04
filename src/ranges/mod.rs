@@ -199,6 +199,16 @@ impl<U> GenomicRangeRecord<U> {
             data: func(self.data),
         }
     }
+
+    /// Consume this [`GenomicRangeRecord`], drop its data,
+    /// and turn it into a [`GenomicRangeRecordEmpty`].
+    pub fn into_empty(self) -> GenomicRangeRecordEmpty {
+        GenomicRangeRecordEmpty {
+            seqname: self.seqname,
+            start: self.start,
+            end: self.end,
+        }
+    }
 }
 
 impl<U: Clone> GenericRange for GenomicRangeRecord<U> {
@@ -303,7 +313,7 @@ impl AdjustableGenericRange for GenomicRangeRecordEmpty {
 }
 
 impl GenericRangeOperations for GenomicRangeRecordEmpty {
-    /// Create flanking regions for this [`GenomicRangeEmptyRecord`] range.
+    /// Create flanking regions for this [`GenomicRangeRecordEmpty`] range.
     fn flanking_ranges<R: GenericRange>(
         &self,
         left_flank: Option<Position>,
