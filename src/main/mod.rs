@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use granges::{
     commands::{
         granges_adjust, granges_filter, granges_flank, granges_map, granges_windows, FilterChroms,
-        HistFeatures, Merge, ProcessingMode,
+        FeatureDensity, Merge, ProcessingMode,
     },
     data::operations::FloatOperation,
     prelude::GRangesError,
@@ -26,8 +26,12 @@ Subcommands:
                       overlap with a right range. This is equivalent to a filtering
                       "semi-join" in SQL terminology. 
 
-  hist-features:      Histogram feature coverage per windows. This merges overlapping
-                      ranges first.
+  feature-density     Calculate the density of features per window, e.g. how many 
+                      basepairs are "exon", "CDS", etc. With --exclusive, this will assign
+                      each basepair exclusively to a unique "feature set", such that
+                      if a basepair overlaps "CDS" and "exon" ranges, the overlapping
+                      number of basepairs will be added to a new composite "CDS,exon" 
+                      feature set.
 
   map:                Compute the left grouped overlaps between the left genomic ranges
                       and right genomic ranges, and apply one or more operations to the 
@@ -146,7 +150,7 @@ enum Commands {
         #[arg(long)]
         in_mem: bool,
     },
-    HistFeatures(HistFeatures),
+    FeatureDensity(FeatureDensity),
     /// Do a "left grouped join", on the specified left and right genomic ranges,
     /// and apply one or more functions to the BED5 scores for all right genomic
     /// ranges.
@@ -313,7 +317,7 @@ fn run() -> Result<(), GRangesError> {
             )
         }
         // NOTE: this is the new API, so clean!
-        Some(Commands::HistFeatures(hist_features)) => hist_features.run(),
+        Some(Commands::FeatureDensity(density)) => density.run(),
         Some(Commands::Merge(merge)) => merge.run(),
         Some(Commands::Windows {
             genome,

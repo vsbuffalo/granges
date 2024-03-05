@@ -718,19 +718,29 @@ fn transpose<T>(v: Vec<Vec<T>>) -> Vec<Vec<T>> {
         .collect()
 }
 
-/// Histogram a set of features for a defined window size.
+/// Calculate the density of features in a BED4 file, per window. There are two 
+/// modes:
+///
+///   1. Without --exclusive (default): a basepair overlapping two features will
+///   increment the counts of both. 
+///
+///   2. With --exclusive: a basepair overlapping two features will be assigned to
+///      a new composite "feature set" of the two features, and increment the 
+///      count of that. In contrast to the default case, this means every overlapping
+///      feature in a window is assigned exclusively to one feature set.
 ///
 /// # Tips
 /// This is useful for a quick exploratory look at feature density
 /// by window, e.g. with
 ///
-///  $ granges hist-features --bedfile hg38_ncbiRefSeq.bed.gz --width 1000 --genome \
+///  $ granges hist-features --bedfile hg38_ncbiRefSeq.bed.gz --width 1000 --genome 
 ///    hg38_seqlens.tsv --headers  | xsv table -d'\t' | less
 ///
 /// The xsv tool (https://github.com/BurntSushi/xsv) is useful for visualizing
 /// the results more clearly.
+///
 #[derive(Parser)]
-pub struct HistFeatures {
+pub struct FeatureDensity {
     /// A TSV genome file of chromosome names and their lengths
     #[arg(short, long, required = true)]
     genome: PathBuf,
@@ -751,8 +761,8 @@ pub struct HistFeatures {
     #[arg(short, long)]
     chop: bool,
 
-    /// Assign each basepair exclusively to a single "feature set" 
-    /// based on what features overlap it, and count the number of 
+    /// Assign each basepair exclusively to a single "feature set"
+    /// based on what features overlap it, and count the number of
     /// these per window. E.g. a region that overlaps "CDS" and "exon"
     /// will be called a "CDS,exon" feature. Columns are sorted
     /// in descending order by column sums. Headers will always be
@@ -773,66 +783,171 @@ pub struct HistFeatures {
     output: Option<PathBuf>,
 }
 
-impl HistFeatures {
-    pub fn run(&self) -> Result<CommandOutput<()>, GRangesError> {
+type GRangesFeatureMatrix = GRanges<VecRangesIndexed, Vec<Vec<Position>>>;
+
+impl FeatureDensity {
+    /// Calculate feature density per window, with non-exclusive assignment 
+    /// of basepairs to features. E.g. a basepair that overlaps
+    /// "CDS" and "exon" features will be added to the tallies of both.
+    pub fn feature_density(&self) -> Result<(GRangesFeatureMatrix, Vec<String>), GRangesError> {
         let bedfile = &self.bedfile;
         let genome = read_seqlens(&self.genome)?;
         let bed4_iter = Bed4Iterator::new(bedfile)?;
 
+        // Split the elements in the iterator by feature into multiple GRanges objects.
+        let mut records_by_features: HashMap<String, Vec<GenomicRangeRecordEmpty>> =
+            HashMap::new();
+        for result in bed4_iter {
+            let range = result?;
+            let feature = &range.data.name;
+            let vec = records_by_features.entry(feature.to_string()).or_default();
+            vec.push(range.into_empty()) // drop the feature, since we're hashing on it
+        }
+
+        // Load all the *merged* split records into memory as interval trees.
+        let mut gr_by_features: HashMap<String, GRangesEmpty<COITreesEmpty>> = HashMap::new();
+        for (feature, ranges) in records_by_features.into_iter() {
+            // doing a streaming merge of each feature; bookend merge
+            let merging_iter = MergingEmptyIterator::new(ranges, 0);
+
+            // load into memory and convert to interval trees
+            let gr = GRangesEmpty::from_iter_ok(merging_iter, &genome)?.into_coitrees()?;
+
+            assert!(!gr_by_features.contains_key(&feature));
+            gr_by_features.insert(feature, gr);
+        }
+
+        // Now, create windows.
+        let windows = GRangesEmpty::from_windows(&genome, self.width, self.step, self.chop)?;
+
+        let features: Vec<_> = gr_by_features.keys().cloned().collect();
+        let mut feature_matrix = Vec::new();
+        for (_feature, gr) in gr_by_features.into_iter() {
+            // find the features that overlap each window
+            // TODO/OPTIMIZE: how costly is this clone?
+            let window_counts = windows
+                .clone()
+                .left_overlaps(&gr)?
+                .map_joins(|joins| {
+                    // these are merged, so this is the number of *unique* basepairs
+                    let total_overlaps: Position = joins.join.overlaps().iter().cloned().sum();
+                    total_overlaps
+                })?
+            .take_data()?;
+            feature_matrix.push(window_counts);
+        }
+
+        let feature_matrix = transpose(feature_matrix);
+
+        // Unite the windows with the feature matrix.
+        let windows = GRangesEmpty::from_windows(&genome, self.width, self.step, self.chop)?;
+        let windows = windows.into_granges_data(feature_matrix)?;
+        Ok((windows, features))
+    }
+
+    /// Calculate feature density, but assign each basepair exclusively to a single 
+    /// "feature set", which is the unique set of features that a particular 
+    /// basepair overlaps.
+    pub fn feature_density_exclusive(&self) -> Result<(GRangesFeatureMatrix, Vec<String>), GRangesError> {
+        let bedfile = &self.bedfile;
+        let genome = read_seqlens(&self.genome)?;
+        let bed4_iter = Bed4Iterator::new(bedfile)?;
+
+        // Create GRanges of the feature indices.
+        // We do this manually to avoid creating a needless data container.
+        let mut gr = GRanges::new_vec_keyed(&genome);
+        for result in bed4_iter {
+            let range = result?;
+
+            // Note the trick here: we are *re-using* indices.
+            gr.push_range_with_key(&range.seqname, range.start, range.end, &range.data.name)?;
+        }
+        let gr = gr.into_coitrees()?;
+
+        // clone the feature map
+        let feature_map = gr.data().ok_or(GRangesError::NoDataContainer)?.clone();
+
+        // Create windows.
+        let windows = GRangesEmpty::from_windows(&genome, self.width, self.step, self.chop)?;
+
+        // "Reduce" ranges and
+        let windows_overlaps = windows.left_overlaps(&gr)?.map_joins(|mut join| {
+            // "reduce" the ranges to a minimum spanning set that contains a vec of indices
+            let ranges = join.join.reduce_ranges();
+            let mut feature_overlaps: HashMap<Vec<usize>, _> = HashMap::new();
+            for range in ranges.iter() {
+                let mut key: Vec<usize> = range.indices().iter().map(|x| x.unwrap()).collect();
+                key.sort(); // sorted key is compound key
+                *feature_overlaps.entry(key).or_insert(0) += range.width();
+            }
+
+            feature_overlaps
+        })?;
+
+        // Now, we go over the data and get the observed sets
+        let mut observed_sets = UniqueIdentifier::new();
+        let data = windows_overlaps
+            .data()
+            .ok_or(GRangesError::NoDataContainer)?;
+        for feature_counts in data.iter() {
+            for feature_set in feature_counts.keys() {
+                observed_sets.get_or_insert(feature_set);
+            }
+        }
+        let nsets = observed_sets.len(); // total feature sets
+
+        // Go over data again, making the sparse hashmap into a full
+        // matrix of overlappng basepairs.
+        let window_counts = windows_overlaps.map_data(|feature_counts| {
+            // fill out matrix
+            let mut counts = vec![0; nsets];
+            for (i, feature_set) in observed_sets.keys().enumerate() {
+                counts[i] = *feature_counts.get(feature_set).unwrap_or(&0);
+            }
+            counts
+        })?;
+
+        // To make this prettier, let's sort by column totals (this
+        // is a little pricey; we can make option later if needed).
+        let matrix = window_counts.data().ok_or(GRangesError::NoDataContainer)?;
+        let col_totals = column_totals(matrix);
+        let sorted_indices = sorted_indices_by_values(&col_totals);
+
+        let window_counts = window_counts.map_data(|row| {
+            let row: Vec<_> = sorted_indices.iter().map(|i| row[*i]).collect();
+            row
+        })?;
+
+        // Create the labels.
+        let feature_sets: Vec<String> = observed_sets
+            .keys()
+            .map(|indices_key| {
+                let labels: Vec<_> = indices_key
+                    .iter()
+                    .map(|idx| feature_map.get_key(*idx).unwrap().clone())
+                    .collect();
+                labels.join(",")
+            })
+        .collect();
+
+        // Re-order the headers too by the sorted indices.
+        let feature_sets: Vec<_> = sorted_indices
+            .iter()
+            .map(|i| feature_sets[*i].clone())
+            .collect();
+
+        Ok((window_counts, feature_sets))
+    }
+
+    /// Run this command given the command line interface.
+    pub fn run(&self) -> Result<CommandOutput<()>, GRangesError> {
         if !self.exclusive {
-            // Split the elements in the iterator by feature into multiple GRanges objects.
-            let mut records_by_features: HashMap<String, Vec<GenomicRangeRecordEmpty>> =
-                HashMap::new();
-            for result in bed4_iter {
-                let range = result?;
-                let feature = &range.data.name;
-                let vec = records_by_features.entry(feature.to_string()).or_default();
-                vec.push(range.into_empty()) // drop the feature, since we're hashing on it
-            }
-
-            // Load all the *merged* split records into memory as interval trees.
-            let mut gr_by_features: HashMap<String, GRangesEmpty<COITreesEmpty>> = HashMap::new();
-            for (feature, ranges) in records_by_features.into_iter() {
-                // doing a streaming merge of each feature; bookend merge
-                let merging_iter = MergingEmptyIterator::new(ranges, 0);
-
-                // load into memory and convert to interval trees
-                let gr = GRangesEmpty::from_iter_ok(merging_iter, &genome)?.into_coitrees()?;
-
-                assert!(!gr_by_features.contains_key(&feature));
-                gr_by_features.insert(feature, gr);
-            }
-
-            // Now, create windows.
-            let windows = GRangesEmpty::from_windows(&genome, self.width, self.step, self.chop)?;
-
-            let features: Vec<_> = gr_by_features.keys().cloned().collect();
-            let mut feature_matrix = Vec::new();
-            for (_feature, gr) in gr_by_features.into_iter() {
-                // find the features that overlap each window
-                // TODO/OPTIMIZE: how costly is this clone?
-                let window_counts = windows
-                    .clone()
-                    .left_overlaps(&gr)?
-                    .map_joins(|joins| {
-                        // these are merged, so this is the number of *unique* basepairs
-                        let total_overlaps: Position = joins.join.overlaps().iter().cloned().sum();
-                        total_overlaps
-                    })?
-                    .take_data()?;
-                feature_matrix.push(window_counts);
-            }
-
-            let feature_matrix = transpose(feature_matrix);
-
-            // Unite the windows with the feature matrix.
-            let windows = GRangesEmpty::from_windows(&genome, self.width, self.step, self.chop)?;
-            let windows = windows.into_granges_data(feature_matrix)?;
+            let (window_counts, features) = self.feature_density()?;
 
             // Write everything.
             if !self.headers {
                 // we have to *manually* add headers (serde needs flat structs otherwise)
-                windows.write_to_tsv(self.output.as_ref(), &BED_TSV)?;
+                window_counts.write_to_tsv(self.output.as_ref(), &BED_TSV)?;
             } else {
                 let mut headers = vec!["chrom".to_string(), "start".to_string(), "end".to_string()];
                 headers.extend(features);
@@ -841,92 +956,10 @@ impl HistFeatures {
                     no_value_string: "NA".to_string(),
                     headers: Some(headers),
                 };
-                windows.write_to_tsv(self.output.as_ref(), &config)?;
+                window_counts.write_to_tsv(self.output.as_ref(), &config)?;
             }
         } else {
-            // This is done a bit differently than the non-classify case
-
-            // Create GRanges of the feature indices.
-            // We do this manually to avoid creating a needless data container.
-            let mut gr = GRanges::new_vec_keyed(&genome);
-            for result in bed4_iter {
-                let range = result?;
-
-                // Note the trick here: we are *re-using* indices.
-                gr.push_range_with_key(&range.seqname, range.start, range.end, &range.data.name)?;
-            }
-            let gr = gr.into_coitrees()?;
-
-            // clone the feature map
-            let feature_map = gr.data().ok_or(GRangesError::NoDataContainer)?.clone();
-
-            // Create windows.
-            let windows = GRangesEmpty::from_windows(&genome, self.width, self.step, self.chop)?;
-
-            // "Reduce" ranges and
-            let windows_overlaps = windows.left_overlaps(&gr)?.map_joins(|mut join| {
-                // "reduce" the ranges to a minimum spanning set that contains a vec of indices
-                let ranges = join.join.reduce_ranges();
-                let mut feature_overlaps: HashMap<Vec<usize>, _> = HashMap::new();
-                for range in ranges.iter() {
-                    let mut key: Vec<usize> = range.indices().iter().map(|x| x.unwrap()).collect();
-                    key.sort(); // sorted key is compound key
-                    *feature_overlaps.entry(key).or_insert(0) += range.width();
-                }
-
-                feature_overlaps
-            })?;
-
-            // Now, we go over the data and get the observed sets
-            let mut observed_sets = UniqueIdentifier::new();
-            let data = windows_overlaps
-                .data()
-                .ok_or(GRangesError::NoDataContainer)?;
-            for feature_counts in data.iter() {
-                for feature_set in feature_counts.keys() {
-                    observed_sets.get_or_insert(feature_set);
-                }
-            }
-            let nsets = observed_sets.len(); // total feature sets
-
-            // Go over data again, making the sparse hashmap into a full
-            // matrix of overlappng basepairs.
-            let gr = windows_overlaps.map_data(|feature_counts| {
-                // fill out matrix
-                let mut counts = vec![0; nsets];
-                for (i, feature_set) in observed_sets.keys().enumerate() {
-                    counts[i] = *feature_counts.get(feature_set).unwrap_or(&0);
-                }
-                counts
-            })?;
-
-            // To make this prettier, let's sort by column totals (this
-            // is a little pricey; we can make option later if needed).
-            let matrix = gr.data().ok_or(GRangesError::NoDataContainer)?;
-            let col_totals = column_totals(matrix);
-            let sorted_indices = sorted_indices_by_values(&col_totals);
-
-            let gr = gr.map_data(|row| {
-                let row: Vec<_> = sorted_indices.iter().map(|i| row[*i]).collect();
-                row
-            })?;
-
-            // Create the labels.
-            let feature_sets: Vec<String> = observed_sets
-                .keys()
-                .map(|indices_key| {
-                    let labels: Vec<_> = indices_key
-                        .iter()
-                        .map(|idx| feature_map.get_key(*idx).unwrap().clone())
-                        .collect();
-                    labels.join(",")
-                })
-                .collect();
-
-            // Re-order the headers too by the sorted indices.
-            let feature_sets: Vec<_> = sorted_indices.iter()
-                .map(|i| feature_sets[*i].clone()).collect();
-
+            let (window_counts, feature_sets) = self.feature_density_exclusive()?;
             let mut headers = vec!["chrom".to_string(), "start".to_string(), "end".to_string()];
             headers.extend(feature_sets);
 
@@ -934,14 +967,13 @@ impl HistFeatures {
                 no_value_string: "NA".to_string(),
                 headers: Some(headers),
             };
-            gr.write_to_tsv(self.output.as_ref(), &config)?;
+            window_counts.write_to_tsv(self.output.as_ref(), &config)?;
         }
         Ok(CommandOutput::new((), None))
     }
 }
 
-
-// get column totals 
+// get column totals
 fn column_totals(matrix: &Vec<Vec<Position>>) -> Vec<Position> {
     if matrix.is_empty() || matrix[0].is_empty() {
         return Vec::new();
@@ -959,7 +991,7 @@ fn column_totals(matrix: &Vec<Vec<Position>>) -> Vec<Position> {
     }
 
     totals
-} 
+}
 
 // get descending indices order
 fn sorted_indices_by_values(values: &[Position]) -> Vec<usize> {
@@ -967,4 +999,3 @@ fn sorted_indices_by_values(values: &[Position]) -> Vec<usize> {
     indices.sort_by_key(|&i| std::cmp::Reverse(values[i]));
     indices
 }
-

@@ -1,7 +1,13 @@
 //! Test cases and test utility functions.
 //!
 
-use std::{io::BufRead, path::PathBuf};
+use std::{
+    env,
+    fs::{self, copy},
+    io::BufRead,
+    path::PathBuf,
+};
+use tempfile::{Builder, NamedTempFile};
 
 use crate::{
     commands::granges_random_bed,
@@ -22,12 +28,16 @@ use genomap::GenomeMap;
 use indexmap::IndexMap;
 #[cfg(feature = "ndarray")]
 use ndarray::{Array1, Array2};
-use rand::{rngs::StdRng, distributions::Uniform, seq::SliceRandom, Rng, SeedableRng};
+use rand::{distributions::Uniform, rngs::StdRng, seq::SliceRandom, Rng, SeedableRng};
 
-// Set the seed for reproducible tests.
-const SEED: u64 = 4;
-
-use tempfile::{Builder, NamedTempFile};
+// Use a default random seed, unless one is in the environment.
+fn get_rng() -> StdRng {
+    let seed: u64 = env::var("TEST_SEED")
+        .unwrap_or_else(|_| "13".to_string())
+        .parse()
+        .expect("TEST_SEED must be a valid u64");
+    StdRng::seed_from_u64(seed)
+}
 
 /// Get the path to the `grange` command line tool after a build.
 /// This is used for integration tests and benchmarks.
@@ -62,31 +72,29 @@ pub const MAX_CHROM_LEN: Position = 250_000_000;
 
 /// Build a random range start/end on a sequence of `max_len`.
 /// 0-indexed, right exclusive
-pub fn random_range(chrom_len: Position) -> (Position, Position) {
-    let mut rng = StdRng::seed_from_u64(SEED);
+pub fn random_range(chrom_len: Position, rng: &mut StdRng) -> (Position, Position) {
     let len = rng.gen_range(MIN_LEN..MAX_LEN);
     let start = rng.gen_range(0..chrom_len - len + 1);
     (start, start + len)
 }
 
 /// Build random sequence lengths
-pub fn random_seqlen() -> Position {
-    let mut rng = StdRng::seed_from_u64(SEED);
+pub fn random_seqlen(rng: &mut StdRng) -> Position {
     rng.gen_range(MIN_CHROM_LEN..=MAX_CHROM_LEN)
 }
 
 /// Sample a random chromosome
-pub fn random_chrom() -> String {
-    let mut rng = StdRng::seed_from_u64(SEED);
+pub fn random_chrom(rng: &mut StdRng) -> String {
     format!("chr{}", rng.gen_range(1..NCHROM + 1))
 }
 
 /// Build random [`VecRanges`]
 pub fn random_vecranges(n: usize) -> VecRanges<RangeEmpty> {
-    let seqlen = random_seqlen();
+    let mut rng = get_rng();
+    let seqlen = random_seqlen(&mut rng);
     let mut vr = VecRanges::new(seqlen);
     for _i in 0..n {
-        let (start, end) = random_range(seqlen);
+        let (start, end) = random_range(seqlen, &mut rng);
         let range = RangeEmpty::new(start, end);
         vr.push_range(range);
     }
@@ -99,7 +107,7 @@ pub fn random_granges(
     seqlens: &IndexMap<String, Position>,
     num: usize,
 ) -> Result<GRangesEmpty<VecRangesEmpty>, GRangesError> {
-    let mut rng = StdRng::seed_from_u64(SEED);
+    let mut rng = get_rng();
 
     let mut gr = GRangesEmpty::new_vec(seqlens);
 
@@ -109,15 +117,14 @@ pub fn random_granges(
         let chrom_len = *seqlens
             .get(seqname)
             .ok_or_else(|| GRangesError::MissingSequence(seqname.clone()))?;
-        let (start, end) = random_range(chrom_len);
+        let (start, end) = random_range(chrom_len, &mut rng);
         gr.push_range(seqname, start, end)?;
     }
     Ok(gr)
 }
 
 /// Generate random strings, e.g. for mock feature names.
-fn generate_random_string(n: usize) -> String {
-    let mut rng = StdRng::seed_from_u64(SEED);
+fn generate_random_string(n: usize, rng: &mut StdRng) -> String {
     let letters: Vec<char> = ('a'..='z').collect();
     let letters_dist = Uniform::from(0..letters.len());
 
@@ -125,8 +132,7 @@ fn generate_random_string(n: usize) -> String {
 }
 
 /// Generate a random float value, e.g. for a mock BED "score".
-fn generate_random_uniform(start: f64, end: f64) -> f64 {
-    let mut rng = StdRng::seed_from_u64(SEED);
+fn generate_random_uniform(start: f64, end: f64, rng: &mut StdRng) -> f64 {
     let uniform = Uniform::new(start, end); // Specify the range
     rng.sample(uniform)
 }
@@ -137,7 +143,7 @@ pub fn random_granges_mock_bed5(
     seqlens: &IndexMap<String, Position>,
     num: usize,
 ) -> Result<GRanges<VecRangesIndexed, Vec<Bed5Addition>>, GRangesError> {
-    let mut rng = StdRng::seed_from_u64(SEED);
+    let mut rng = get_rng();
 
     let mut gr = GRanges::new_vec(seqlens);
 
@@ -147,10 +153,10 @@ pub fn random_granges_mock_bed5(
         let chrom_len = *seqlens
             .get(seqname)
             .ok_or_else(|| GRangesError::MissingSequence(seqname.clone()))?;
-        let (start, end) = random_range(chrom_len);
+        let (start, end) = random_range(chrom_len, &mut rng);
         let bed5_cols = Bed5Addition {
-            name: generate_random_string(8),
-            score: Some(generate_random_uniform(0.0, 1.0)),
+            name: generate_random_string(8, &mut rng),
+            score: Some(generate_random_uniform(0.0, 1.0, &mut rng)),
         };
         gr.push_range(seqname, start, end, bed5_cols)?;
     }
@@ -166,10 +172,31 @@ pub fn random_coitrees() -> COITrees<()> {
 
 /// Get a temporary file with a .bed suffix.
 pub fn temp_bedfile() -> NamedTempFile {
-    Builder::new()
+    let tempfile = Builder::new()
         .suffix(".bed")
         .tempfile()
-        .expect("Failed to create temp file")
+        .expect("Failed to create temp file");
+    tempfile
+}
+
+/// Copy a temp file for inspection, allowing the specification of a custom temporary directory name.
+// AICODE -- co-written with AI
+pub fn copy_tempfile_for_inspection(tempfile: impl Into<PathBuf>, new_file_name: &str) -> PathBuf {
+    let tempfile = tempfile.into();
+    // Check if the TEST_LOCAL environment variable is set
+    if env::var("TEST_LOCAL").is_ok() {
+        let dir_path = PathBuf::from("test_temp");
+        fs::create_dir_all(&dir_path).expect("could not create test_temp/");
+
+        let dest_path = dir_path.join(new_file_name);
+
+        copy(tempfile, &dest_path).expect("could not copy temp file");
+
+        dest_path
+    } else {
+        // If TEST_LOCAL is not set, simply return the path of the original temp file
+        tempfile
+    }
 }
 
 /// Create a random BED3 file based on the hg38 sequence lengths, and write to disk.

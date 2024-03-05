@@ -93,7 +93,7 @@ fn validate_bedfloats(
 // adjustable test sizes -- useful also for making very small
 // so string diffs are easier to compare.
 #[cfg(not(feature = "bench-big"))]
-const BED_LENGTH: usize = 10;
+const BED_LENGTH: usize = 100_000;
 #[cfg(feature = "bench-big")]
 const BED_LENGTH: usize = 1_000_000;
 
@@ -322,6 +322,10 @@ fn test_against_bedtools_makewindows() {
     let widths = vec![131123, 1_000_0013];
     let steps = vec![10_001, 10_113];
 
+    // smaller test set:
+    // let widths = vec![1_000_0013];
+    // let steps = vec![10000];
+
     for width in widths.iter() {
         for step in steps.iter() {
             let bedtools_output = Command::new("bedtools")
@@ -441,8 +445,8 @@ fn test_against_bedtools_map_multiple() {
     // try multiple operations at once
     let num_ranges = BED_LENGTH;
     let width = 1_000_000;
-    #[allow(unused_variables)]
-    let step = 10_000; // can uncomment lines below to test this
+    // #[allow(unused_variables)]
+    // let step = 10_000; // can uncomment lines below to test this
 
     // make windows
     let windows_file = temp_bedfile();
@@ -464,8 +468,11 @@ fn test_against_bedtools_map_multiple() {
         granges_windows_output
     );
 
+    // copy_tempfile_for_inspection(&windows_file.path(), "windows.bed");
+
     // create the random data BED5
     let bedscores_file = random_bed5file(num_ranges);
+    // copy_tempfile_for_inspection(&bedscores_file.path(), "scores.bed");
 
     let bedtools_path = temp_bedfile();
     let bedtools_output_file = File::create(&bedtools_path).unwrap();
@@ -485,6 +492,8 @@ fn test_against_bedtools_map_multiple() {
         .output()
         .expect("bedtools map failed");
 
+    // copy_tempfile_for_inspection(&bedtools_path.path(), "bedtools.bed");
+
     let granges_output_file = temp_bedfile();
     let granges_output = Command::new(granges_binary_path())
         .arg("map")
@@ -500,6 +509,8 @@ fn test_against_bedtools_map_multiple() {
         .arg(granges_output_file.path())
         .output()
         .expect("granges map failed");
+
+    // copy_tempfile_for_inspection(&granges_output_file.path(), "granges.bed");
 
     assert!(bedtools_output.status.success(), "{:?}", bedtools_output);
     assert!(granges_output.status.success(), "{:?}", granges_output);
@@ -539,6 +550,7 @@ fn test_against_bedtools_map_multiple() {
         .iter()
         .zip(bedtools_data.iter())
         .for_each(|(gr, bd)| {
+            // dbg!((gr.min, bd.min));
             assert_option_float_tol!(gr.min, bd.min);
             assert_option_float_tol!(gr.max, bd.max);
 
