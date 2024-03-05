@@ -22,7 +22,11 @@ use genomap::GenomeMap;
 use indexmap::IndexMap;
 #[cfg(feature = "ndarray")]
 use ndarray::{Array1, Array2};
-use rand::{distributions::Uniform, seq::SliceRandom, thread_rng, Rng};
+use rand::{rngs::StdRng, distributions::Uniform, seq::SliceRandom, Rng, SeedableRng};
+
+// Set the seed for reproducible tests.
+const SEED: u64 = 4;
+
 use tempfile::{Builder, NamedTempFile};
 
 /// Get the path to the `grange` command line tool after a build.
@@ -59,7 +63,7 @@ pub const MAX_CHROM_LEN: Position = 250_000_000;
 /// Build a random range start/end on a sequence of `max_len`.
 /// 0-indexed, right exclusive
 pub fn random_range(chrom_len: Position) -> (Position, Position) {
-    let mut rng = thread_rng();
+    let mut rng = StdRng::seed_from_u64(SEED);
     let len = rng.gen_range(MIN_LEN..MAX_LEN);
     let start = rng.gen_range(0..chrom_len - len + 1);
     (start, start + len)
@@ -67,13 +71,13 @@ pub fn random_range(chrom_len: Position) -> (Position, Position) {
 
 /// Build random sequence lengths
 pub fn random_seqlen() -> Position {
-    let mut rng = thread_rng();
+    let mut rng = StdRng::seed_from_u64(SEED);
     rng.gen_range(MIN_CHROM_LEN..=MAX_CHROM_LEN)
 }
 
 /// Sample a random chromosome
 pub fn random_chrom() -> String {
-    let mut rng = thread_rng();
+    let mut rng = StdRng::seed_from_u64(SEED);
     format!("chr{}", rng.gen_range(1..NCHROM + 1))
 }
 
@@ -95,7 +99,7 @@ pub fn random_granges(
     seqlens: &IndexMap<String, Position>,
     num: usize,
 ) -> Result<GRangesEmpty<VecRangesEmpty>, GRangesError> {
-    let mut rng = thread_rng();
+    let mut rng = StdRng::seed_from_u64(SEED);
 
     let mut gr = GRangesEmpty::new_vec(seqlens);
 
@@ -113,7 +117,7 @@ pub fn random_granges(
 
 /// Generate random strings, e.g. for mock feature names.
 fn generate_random_string(n: usize) -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = StdRng::seed_from_u64(SEED);
     let letters: Vec<char> = ('a'..='z').collect();
     let letters_dist = Uniform::from(0..letters.len());
 
@@ -122,7 +126,7 @@ fn generate_random_string(n: usize) -> String {
 
 /// Generate a random float value, e.g. for a mock BED "score".
 fn generate_random_uniform(start: f64, end: f64) -> f64 {
-    let mut rng = rand::thread_rng();
+    let mut rng = StdRng::seed_from_u64(SEED);
     let uniform = Uniform::new(start, end); // Specify the range
     rng.sample(uniform)
 }
@@ -133,7 +137,7 @@ pub fn random_granges_mock_bed5(
     seqlens: &IndexMap<String, Position>,
     num: usize,
 ) -> Result<GRanges<VecRangesIndexed, Vec<Bed5Addition>>, GRangesError> {
-    let mut rng = thread_rng();
+    let mut rng = StdRng::seed_from_u64(SEED);
 
     let mut gr = GRanges::new_vec(seqlens);
 

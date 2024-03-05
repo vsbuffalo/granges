@@ -37,7 +37,7 @@
 //! [`BedlikeIterator`]: crate::io::parsers::BedlikeIterator
 //! [`GRanges::into_coitrees`]: crate::granges::GRanges::into_coitrees
 
-use std::{collections::HashSet, path::PathBuf};
+use std::{collections::HashSet, hash::Hash, path::PathBuf};
 
 use genomap::GenomeMap;
 use indexmap::IndexMap;
@@ -64,6 +64,7 @@ use crate::{
         GenomicRangesTsvSerialize, IndexedDataContainer, IterableRangeContainer, LeftOverlaps,
         RangeContainer,
     },
+    unique_id::UniqueIdentifier,
     Position, PositionOffset,
 };
 
@@ -302,6 +303,48 @@ impl<R: GenericRange, T> GRanges<VecRanges<R>, T> {
 
     pub fn shink(&mut self) {
         todo!()
+    }
+}
+
+impl<K: Clone + std::cmp::Eq + Hash> GRanges<VecRangesIndexed, UniqueIdentifier<K>> {
+    /// Create a new [`GRanges`] object, with a [`UniqueIdentifier`] as a
+    /// data container.
+    pub fn new_vec_keyed(seqlens: &IndexMap<String, Position>) -> Self {
+        let mut ranges = GenomeMap::new();
+        for (seqname, length) in seqlens.iter() {
+            // this should never happen because the error is only if
+            // insert encounters a seqname that's already been inserted -- that
+            // cannot happen here.
+            ranges
+                .insert(seqname, VecRanges::new(*length))
+                .expect("Internal error: please report");
+        }
+        Self { ranges, data: None }
+    }
+    pub fn push_range_with_key(
+        &mut self,
+        seqname: &str,
+        start: Position,
+        end: Position,
+        key: &K,
+    ) -> Result<(), GRangesError> {
+        let data_ref = match self.data {
+            Some(ref mut data) => data,
+            None => {
+                self.data = Some(UniqueIdentifier::new());
+                self.data.as_mut().unwrap() // Safe unwrap because we just inserted a value
+            }
+        };
+
+        let index = data_ref.get_or_insert(key);
+        let range = RangeIndexed::new(start, end, index);
+
+        let range_container = self
+            .ranges
+            .get_mut(seqname)
+            .ok_or(GRangesError::MissingSequence(seqname.to_string()))?;
+        range_container.push_range(range);
+        Ok(())
     }
 }
 
@@ -805,7 +848,7 @@ where
                 if let Some(right_ranges) = right.ranges.get(seqname) {
                     right_ranges.query(left_range.start(), left_range.end(), |right_range| {
                         // NOTE: right_range is a coitrees::IntervalNode.
-                        join_data.add_right(&left_range, right_range);
+                        join_data.add_right(right_range);
                     });
                 }
                 gr.push_range_with_join(seqname, left_range.start, left_range.end, join_data)?;
@@ -846,7 +889,7 @@ where
                 if let Some(right_ranges) = right.0.ranges.get(seqname) {
                     right_ranges.query(left_range.start(), left_range.end(), |right_range| {
                         // NOTE: right_range is a coitrees::IntervalNode.
-                        join_data.add_right(&left_range, right_range);
+                        join_data.add_right(right_range);
                     });
                 }
                 gr.push_range_with_join(seqname, left_range.start, left_range.end, join_data)?;
@@ -898,7 +941,7 @@ where
                 if let Some(right_ranges) = right.ranges.get(seqname) {
                     right_ranges.query(left_range.start(), left_range.end(), |right_range| {
                         // NOTE: right_range is a coitrees::IntervalNode.
-                        join_data.add_right(&left_range, right_range);
+                        join_data.add_right(right_range);
                     });
                 }
                 gr.push_range_with_join(seqname, left_range.start(), left_range.end(), join_data)?;
@@ -949,7 +992,7 @@ where
                 if let Some(right_ranges) = right.0.ranges.get(seqname) {
                     right_ranges.query(left_range.start(), left_range.end(), |right_range| {
                         // NOTE: right_range is a coitrees::IntervalNode.
-                        join_data.add_right(&left_range, right_range);
+                        join_data.add_right(right_range);
                     });
                 }
                 gr.push_range_with_join(seqname, left_range.start(), left_range.end(), join_data)?;

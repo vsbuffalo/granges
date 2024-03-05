@@ -11,7 +11,7 @@ where
 {
     type Item<'a> = &'a U where Self: 'a;
     type OwnedItem = U;
-    type Output = Vec<U>;
+    // type Output = Vec<U>;
 
     fn get_value(&self, index: usize) -> Self::Item<'_> {
         self.get(index).unwrap()
@@ -29,7 +29,7 @@ where
         self.get(index).is_some()
     }
 
-    fn new_from_indices(&self, indices: &[usize]) -> Self::Output {
-        Vec::from_iter(indices.iter().map(|&idx| (*self.get_value(idx)).clone()))
-    }
+    // fn new_from_indices(&self, indices: &[usize]) -> Self::Output {
+    //    Vec::from_iter(indices.iter().map(|&idx| (*self.get_value(idx)).clone()))
+    //}
 }

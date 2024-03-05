@@ -240,6 +240,119 @@ where
     }
 }
 
+/// A merging iterator (over [`GenomicRangeRecord<U>] items,
+/// i.e. from a parsing iterator) that has an additional merge condition tested
+/// by function `G` based on the items.
+pub struct ConditionalMergingIterator<I, U, V, F, G>
+where
+    I: IntoIterator<Item = GenomicRangeRecord<U>>,
+    U: Clone,
+    V: Clone,
+    F: Fn(Vec<U>) -> V,
+    G: Fn(&GenomicRangeRecord<U>, &GenomicRangeRecord<U>) -> bool,
+{
+    last_range: Option<GenomicRangeRecord<U>>,
+    inner: <I as IntoIterator>::IntoIter,
+    minimum_distance: PositionOffset,
+    func: F,
+    group: G,
+    accumulated_data: Vec<U>,
+}
+
+impl<I, U, V, F, G> ConditionalMergingIterator<I, U, V, F, G>
+where
+    I: IntoIterator<Item = GenomicRangeRecord<U>>,
+    U: Clone,
+    V: Clone,
+    F: Fn(Vec<U>) -> V,
+    G: Fn(&GenomicRangeRecord<U>, &GenomicRangeRecord<U>) -> bool,
+{
+    pub fn new(inner: I, minimum_distance: PositionOffset, func: F, group: G) -> Self {
+        Self {
+            last_range: None,
+            inner: inner.into_iter(),
+            minimum_distance,
+            func,
+            group,
+            accumulated_data: Vec::new(),
+        }
+    }
+}
+
+impl<I, U, V, F, G> Iterator for ConditionalMergingIterator<I, U, V, F, G>
+where
+    GenomicRangeRecord<U>: GenericRange,
+    GenomicRangeRecord<V>: GenericRange,
+    I: IntoIterator<Item = GenomicRangeRecord<U>>,
+    U: Clone,
+    V: Clone,
+    F: Fn(Vec<U>) -> V,
+    G: Fn(&GenomicRangeRecord<U>, &GenomicRangeRecord<U>) -> bool,
+{
+    type Item = GenomicRangeRecord<V>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        for next_range in self.inner.by_ref() {
+            if let Some(ref mut last_range) = self.last_range {
+                // If we have an additional group-by merging condition,
+                // check that. If not set this is always true.
+                let satifies_groupby = (self.group)(last_range, &next_range);
+
+                let on_same_chrom = last_range.seqname == next_range.seqname;
+                if on_same_chrom
+                    && satifies_groupby
+                    && last_range.distance_or_overlap(&next_range) <= self.minimum_distance
+                {
+                    // this range overlaps the last range, so we keep accumulating data
+                    last_range.end = max(last_range.end, next_range.end);
+                    self.accumulated_data.push(next_range.data);
+                    continue;
+                } else {
+                    // New range does not overlap the last range, so we have to finalize.
+                    // First, run function on accumulated taken data.
+                    let final_data = (self.func)(std::mem::take(&mut self.accumulated_data));
+                    let return_range = GenomicRangeRecord {
+                        seqname: last_range.seqname.clone(),
+                        start: last_range.start,
+                        end: last_range.end,
+                        data: final_data,
+                    };
+                    // Next push this new range's data to the data stack (empty after take)
+                    self.accumulated_data.push(next_range.data.clone());
+                    self.last_range = Some(next_range);
+                    // Push the new possibly-extend range with accumulated data.
+                    return Some(return_range);
+                }
+            } else {
+                // There is no last range -- this must be the first.
+                self.last_range = Some(GenomicRangeRecord {
+                    seqname: next_range.seqname,
+                    start: next_range.start,
+                    end: next_range.end,
+                    data: next_range.data.clone(),
+                });
+                self.accumulated_data.push(next_range.data);
+                continue;
+            }
+        }
+
+        if let Some(last_range) = self.last_range.take() {
+            if !self.accumulated_data.is_empty() {
+                // Finalize any accumulated data
+                let final_data = (self.func)(std::mem::take(&mut self.accumulated_data));
+                return Some(GenomicRangeRecord {
+                    seqname: last_range.seqname,
+                    start: last_range.start,
+                    end: last_range.end,
+                    data: final_data,
+                });
+            }
+        }
+
+        None // Return None when all items have been processed
+    }
+}
+
 /// A merging iterator (over [`Result<GenomicRangeRecord<U>, GRangesError`] items,
 /// i.e. from a parsing iterator) that has an additional merge condition tested
 /// by function `G` based on the items.

@@ -20,20 +20,24 @@ usage: granges [--help] <subcommand>
 
 Subcommands:
   
-  adjust:    Adjust each genomic range, e.g. to add a kilobase to each end.
+  adjust:             Adjust each genomic range, e.g. to add a kilobase to each end.
 
-  filter:    Filter the left ranges based on whether they have at least one
-             overlap with a right range. This is equivalent to a filtering
-             "semi-join" in SQL terminology. 
+  filter:             Filter the left ranges based on whether they have at least one
+                      overlap with a right range. This is equivalent to a filtering
+                      "semi-join" in SQL terminology. 
 
-  map:       Compute the left grouped overlaps between the left genomic ranges
-             and right genomic ranges, and apply one or more operations to the 
-             score column of the right BED5 file.
+  hist-features:      Histogram feature coverage per windows. This merges overlapping
+                      ranges first.
 
-  merge:     Merge ranges that are within a minimum distance of each other.
+  map:                Compute the left grouped overlaps between the left genomic ranges
+                      and right genomic ranges, and apply one or more operations to the 
+                      score column of the right BED5 file.
+
+  merge:              Merge ranges that are within a minimum distance of each other.
           
-  windows:   Create a set of genomic windows of the specified width (in basepairs),
-             stepping the specified step size (the width, by default).
+  windows:            Create a set of genomic windows of the specified width (in 
+                      basepairs), stepping the specified step size (the width, by 
+                      default).
           
 
 NOTE: granges is under active development. It is not currently meant to be

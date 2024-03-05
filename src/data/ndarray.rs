@@ -146,7 +146,7 @@ where
 {
     type Item<'a> = U;
     type OwnedItem = U;
-    type Output = Array1<U>;
+    // type Output = Array1<U>;
 
     fn get_value(&self, index: usize) -> Self::Item<'_> {
         self[index]
@@ -165,9 +165,9 @@ where
         index < self.shape()[0]
     }
 
-    fn new_from_indices(&self, indices: &[usize]) -> Self::Output {
-        Array1::from_iter(indices.iter().map(|&idx| self.get_value(idx)))
-    }
+    // fn new_from_indices(&self, indices: &[usize]) -> Self::Output {
+    // Array1::from_iter(indices.iter().map(|&idx| self.get_value(idx)))
+    // }
 }
 
 impl<U> IndexedDataContainer for Array2<U>
@@ -176,7 +176,7 @@ where
 {
     type Item<'a> = ArrayView1<'a, U>;
     type OwnedItem = Array1<U>;
-    type Output = Array2<U>;
+    // type Output = Array2<U>;
 
     fn get_value(&self, index: usize) -> Self::Item<'_> {
         self.row(index)
@@ -194,19 +194,19 @@ where
         index < self.shape()[0]
     }
 
-    fn new_from_indices(&self, indices: &[usize]) -> Self::Output {
-        let cols = self.shape()[1];
+    //fn new_from_indices(&self, indices: &[usize]) -> Self::Output {
+    //    let cols = self.shape()[1];
 
-        let rows_data: Vec<U> = indices
-            .iter()
-            .flat_map(|&idx| self.row(idx).iter().cloned().collect::<Vec<_>>())
-            .collect();
+    //    let rows_data: Vec<U> = indices
+    //        .iter()
+    //        .flat_map(|&idx| self.row(idx).iter().cloned().collect::<Vec<_>>())
+    //        .collect();
 
-        // create a new Array2<U> from the rows
-        // shape is (number of indices, number of columns)
-        Array2::from_shape_vec((indices.len(), cols), rows_data)
-            .expect("Shape and collected data size mismatch")
-    }
+    //    // create a new Array2<U> from the rows
+    //    // shape is (number of indices, number of columns)
+    //    Array2::from_shape_vec((indices.len(), cols), rows_data)
+    //        .expect("Shape and collected data size mismatch")
+    //}
 }
 
 #[cfg(test)]

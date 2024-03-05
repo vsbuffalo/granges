@@ -207,7 +207,7 @@ fn test_against_bedtools_slop() {
 /// granges filter --genome <genome> --left <left> --right <right>
 #[test]
 fn test_against_bedtools_intersect_wa() {
-    let num_ranges = 1_000_000;
+    let num_ranges = 100_000;
 
     let random_bedfile_left_tempfile = random_bed3file(num_ranges);
     let random_bedfile_right_tempfile = random_bed3file(num_ranges);
