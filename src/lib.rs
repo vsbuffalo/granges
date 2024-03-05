@@ -364,6 +364,7 @@ pub mod ranges;
 pub mod sequences;
 pub mod test_utilities;
 pub mod traits;
+pub mod unique_id;
 
 // bringing these CLI modules into lib.rs rather than main/ allows for
 // use in integration tests and other Rust-side command line work
@@ -425,8 +426,8 @@ pub mod prelude {
     };
 
     pub use crate::merging_iterators::{
-        ConditionalMergingResultIterator, MergingEmptyIterator, MergingEmptyResultIterator,
-        MergingResultIterator,
+        ConditionalMergingIterator, ConditionalMergingResultIterator, MergingEmptyIterator,
+        MergingEmptyResultIterator, MergingResultIterator,
     };
     pub use crate::traits::{
         AsGRangesRef, GeneralRangeRecordIterator, GenericRange, GenericRangeOperations,

@@ -2,10 +2,88 @@
 //!
 #![allow(clippy::all)]
 
+use std::collections::HashSet;
+
 use crate::{
     traits::{GenericRange, IndexedDataContainer, JoinDataOperations},
     Position,
 };
+
+/// This is a generic range used just in join logic, to avoid
+/// having to handle bringing range types into [`LeftGroupedJoin`],
+/// which clog up the API a bit.
+/// These can represent indexed and empty ranges.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RangeTuple((Position, Position, Option<usize>));
+
+impl GenericRange for RangeTuple {
+    fn start(&self) -> Position {
+        self.0 .0
+    }
+    fn end(&self) -> Position {
+        self.0 .1
+    }
+    fn index(&self) -> Option<usize> {
+        self.0 .2
+    }
+}
+
+/// This is a special "reduced" range that stores indices
+/// to multiple data elements.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RangeReduced((Position, Position, HashSet<Option<usize>>));
+
+impl RangeReduced {
+    pub fn indices(&self) -> &HashSet<Option<usize>> {
+        &self.0 .2
+    }
+}
+
+/// Create a vector of "reduced" or flattened ranges, that stack the indices of each range.
+///
+///
+/// This first finds every range position, sorts, and dedups these. Then,
+/// it iterates through each range of adjacent positions. Each of these
+/// new ranges is guaranteed to be covered by >= 1 range.
+pub fn reduce_ranges<R: GenericRange>(ranges: &Vec<R>) -> Vec<RangeReduced> {
+    let mut range_ends: Vec<Position> = ranges
+        .iter()
+        .flat_map(|range| vec![range.start(), range.end()].into_iter())
+        .collect();
+    range_ends.sort_unstable();
+    range_ends.dedup();
+
+    let mut ranges_reduced = Vec::new();
+    for range in range_ends.windows(2) {
+        let mut indices = HashSet::new();
+        if let [start, end] = range {
+            for range in ranges {
+                if range.start() < *end && range.end() > *start {
+                    indices.insert(range.index());
+                }
+            }
+            if !indices.is_empty() {
+                ranges_reduced.push(RangeReduced((*start, *end, indices)));
+            }
+        }
+    }
+    ranges_reduced
+}
+
+impl GenericRange for RangeReduced {
+    fn start(&self) -> Position {
+        self.0 .0
+    }
+    fn end(&self) -> Position {
+        self.0 .1
+    }
+    // Note: [`RangeReduced`] do not have valid indices,
+    // so this returns [`None`]. (They do have a [`Vec<Option<usize>>`]
+    // of indices, but this has to be accessed through the type.)
+    fn index(&self) -> Option<usize> {
+        None
+    }
+}
 
 /// [`LeftGroupedJoin`] contains information about the right ranges
 /// and their degree of overlap with a focal left range. This information
@@ -13,69 +91,85 @@ use crate::{
 /// corresponding data in overlapping ranges.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LeftGroupedJoin {
-    /// The data index for the left range.
-    left: Option<usize>,
+    /// The left range.
+    pub left: RangeTuple,
 
-    /// A `Vec` of the indices for the overlapping right ranges.
-    /// This is `None` if the right ranges do not have a data container.
-    rights: Option<Vec<usize>>,
-
-    /// The length of the left range.
-    left_length: Position,
-
-    /// The lengths of the right ranges.
-    right_lengths: Vec<Position>,
-
-    /// The lengths of the overlaps between the left and right ranges.
-    overlaps: Vec<Position>,
-    // TODO: we may want some simple summary of whether an overlapping range is
-    // up or downstream. I think the cleanest summary is a signed integer
-    // representing the side and degree of non-overlap. E.g. a range
-    // that overlaps another but overhangs the 3' side of the focal left
-    // range by 10bp is +10; if it were 5', it would be -10.
-
-    // left_data: Option<&'a DL>,
-    // right_data: Option<&'a DR>,
+    /// A `Vec` of the right overlapping ranges (unsorted).
+    // NOTE: previously lengths, overlap width, and their data
+    // indices were stored. For just one extra u32 we can store
+    // all the data in the original structure.
+    pub rights: Vec<RangeTuple>,
 }
 
 impl LeftGroupedJoin {
     /// Create a new [`LeftGroupedJoin`].
     pub fn new<R: GenericRange>(left_range: &R) -> Self {
         Self {
-            left: left_range.index(),
-            rights: None,
-            left_length: left_range.width(),
-            right_lengths: Vec::new(),
-            overlaps: Vec::new(),
-            // left_data,
-            // right_data,
+            left: RangeTuple(left_range.as_tuple()),
+            rights: Vec::new(),
         }
     }
     /// Add a right (overlapping) range to this [`LeftGroupedJoin`].
     ///
     // Note: in principle, this can be called on *non-overlapping* right ranges too,
     // for a full-outer join.
-    pub fn add_right<R: GenericRange, Q: GenericRange>(&mut self, left: &R, right: &Q) {
-        if let Some(right_index) = right.index() {
-            // the right range has data -- add to vec, initializing if not there
-            self.rights.get_or_insert_with(Vec::new).push(right_index)
-        }
-        self.right_lengths.push(right.width());
-        self.overlaps.push(left.overlap_width(right));
+    pub fn add_right<R: GenericRange>(&mut self, right: &R) {
+        self.rights.push(RangeTuple(right.as_tuple()))
     }
+
+    /// Sort the right ranges, for faster downstream processing.
+    pub fn sort_ranges(&mut self) {
+        self.rights.sort_by(|a, b| {
+            a.start()
+                .cmp(&b.start())
+                .then_with(|| a.end().cmp(&b.end()))
+                .then_with(|| a.index().cmp(&b.index()))
+        });
+    }
+
+    /// "Reduce" the ranges into a minimum set, with all
+    /// their indices gathered in a [`Vec<Option<usize>>`].
+    /// This returns a [`Vec<RangeReduced>`].
+    pub fn reduce_ranges(&mut self) -> Vec<RangeReduced> {
+        // we need to trim these by the left range to get the
+        // proper overlaps within this left range
+        let rights: Vec<_> = self
+            .rights
+            .iter()
+            .map(|range| {
+                let (start, end) = range.overlap_range(&self.left).unwrap();
+                RangeTuple((start, end, range.index()))
+            })
+            .collect();
+        reduce_ranges(&rights)
+    }
+
     /// Return whether this left range has any [`LeftGroupedJoin`].
     pub fn has_overlaps(&self) -> bool {
-        !self.overlaps.is_empty()
+        !self.overlaps().is_empty()
     }
 
     /// Retrieve the number of right overlaps.
     pub fn num_overlaps(&self) -> usize {
-        self.overlaps.len()
+        self.overlaps().len()
     }
 
     /// Retrieve the right overlaps.
-    pub fn overlaps(&self) -> &Vec<Position> {
-        &self.overlaps
+    pub fn overlaps(&self) -> Vec<Position> {
+        self.rights
+            .iter()
+            .map(|r| r.overlap_width(&self.left))
+            .collect()
+    }
+
+    /// Get the left index.
+    pub fn left_index(&self) -> Option<usize> {
+        self.left.index()
+    }
+
+    /// Get the right indices.
+    pub fn right_indices(&self) -> Vec<Option<usize>> {
+        self.rights.iter().map(|r| r.index()).collect()
     }
 }
 
@@ -164,13 +258,11 @@ where
         self.joins
             .into_iter()
             .map(|join| {
-                let left_data = self.left_data.get_owned(join.left.unwrap());
+                let left_data = self.left_data.get_owned(join.left_index().unwrap());
                 let right_data = join
-                    .rights
-                    .as_ref()
-                    .unwrap()
+                    .right_indices()
                     .iter()
-                    .map(|idx| self.right_data.get_owned(*idx))
+                    .map(|idx| self.right_data.get_owned(idx.unwrap()))
                     .collect();
 
                 func(CombinedJoinData {
@@ -257,13 +349,11 @@ where
         self.joins
             .into_iter()
             .map(|join| {
-                let right_indices = join.rights.as_ref();
-                let right_data = right_indices.map_or(Vec::new(), |indices| {
-                    indices
-                        .iter()
-                        .map(|idx| self.right_data.get_owned(*idx))
-                        .collect()
-                });
+                let right_indices = join.right_indices();
+                let right_data = right_indices
+                    .iter()
+                    .map(|idx| self.right_data.get_owned(idx.unwrap()))
+                    .collect();
 
                 func(CombinedJoinDataLeftEmpty { join, right_data })
             })
@@ -343,7 +433,7 @@ where
         self.joins
             .into_iter()
             .map(|join| {
-                let left_data = self.left_data.get_owned(join.left.unwrap());
+                let left_data = self.left_data.get_owned(join.left_index().unwrap());
 
                 func(CombinedJoinDataRightEmpty { join, left_data })
             })
@@ -443,9 +533,8 @@ impl<'a, DL, DR> Iterator for JoinDataIterator<'a, DL, DR> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::ranges::RangeIndexed;
-
-    use super::{JoinData, LeftGroupedJoin};
 
     #[test]
     fn test_join_data_new() {
@@ -457,8 +546,94 @@ mod tests {
         let left = RangeIndexed::new(0, 10, 1);
         let mut join = LeftGroupedJoin::new(&left);
         let right = RangeIndexed::new(8, 10, 1);
-        join.add_right(&left, &right);
+        join.add_right(&right);
         jd.push(join);
         assert_eq!(jd.len(), 1);
+    }
+
+    #[test]
+    fn test_single_range_indexed() {
+        let ranges = vec![RangeIndexed {
+            start: 1,
+            end: 5,
+            index: 0,
+        }];
+        let reduced = reduce_ranges(&ranges);
+
+        assert_eq!(reduced.len(), 1);
+        assert_eq!(reduced[0].0 .0, 1);
+        assert_eq!(reduced[0].0 .1, 5);
+        assert!(reduced[0].0 .2.contains(&Some(0)));
+    }
+
+    #[test]
+    fn test_overlapping_ranges_indexed() {
+        let ranges = vec![
+            RangeIndexed {
+                start: 1,
+                end: 4,
+                index: 0,
+            },
+            RangeIndexed {
+                start: 3,
+                end: 6,
+                index: 1,
+            },
+        ];
+        let reduced = reduce_ranges(&ranges);
+
+        assert_eq!(reduced.len(), 3);
+
+        let mut iter = reduced.iter();
+        let first_range = iter.next().unwrap();
+        assert_eq!(first_range.start(), 1);
+        assert_eq!(first_range.end(), 3);
+        assert_eq!(first_range.indices().len(), 1);
+        assert!(first_range.indices().contains(&Some(0)));
+
+        let second_range = iter.next().unwrap();
+        assert_eq!(second_range.start(), 3);
+        assert_eq!(second_range.end(), 4);
+        assert_eq!(second_range.indices().len(), 2);
+        assert!(second_range.indices().contains(&Some(0)));
+        assert!(second_range.indices().contains(&Some(1)));
+
+        let third_range = iter.next().unwrap();
+        assert_eq!(third_range.start(), 4);
+        assert_eq!(third_range.end(), 6);
+        assert_eq!(third_range.indices().len(), 1);
+        assert!(third_range.indices().contains(&Some(1)));
+    }
+
+    #[test]
+    fn test_non_overlapping_ranges_indexed() {
+        let ranges = vec![
+            RangeIndexed {
+                start: 1,
+                end: 3,
+                index: 0,
+            },
+            RangeIndexed {
+                start: 4,
+                end: 6,
+                index: 1,
+            },
+        ];
+        let reduced = reduce_ranges(&ranges);
+
+        assert_eq!(reduced.len(), 2);
+
+        let mut iter = reduced.iter();
+        let first_range = iter.next().unwrap();
+        assert_eq!(first_range.start(), 1);
+        assert_eq!(first_range.end(), 3);
+        assert_eq!(first_range.indices().len(), 1);
+        assert!(first_range.indices().contains(&Some(0)));
+
+        let second_range = iter.next().unwrap();
+        assert_eq!(second_range.start(), 4);
+        assert_eq!(second_range.end(), 6);
+        assert_eq!(second_range.indices().len(), 1);
+        assert!(second_range.indices().contains(&Some(1)));
     }
 }

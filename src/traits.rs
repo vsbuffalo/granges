@@ -79,6 +79,12 @@ pub trait GenericRange: Clone {
         overlap_end.saturating_sub(overlap_start)
     }
 
+    /// Calculate how many basepairs overlap this range and other.
+    fn has_overlap_with<R: GenericRange>(&self, other: &R) -> bool {
+        // TODO/OPTIMIZE inefficient FIXME
+        self.overlap_width(other) > 0
+    }
+
     fn distance_or_overlap<R: GenericRange>(&self, other: &R) -> PositionOffset {
         if self.end() > other.start() && self.start() < other.end() {
             // The ranges overlap -- return how much as a negative number
@@ -308,7 +314,7 @@ pub trait IndexedDataContainer: DataContainer {
     where
         Self: 'a;
     type OwnedItem;
-    type Output;
+    // type Output;
     // this type is needed to reference the core underlying type,
     // eg to handle reference types
     fn is_valid_index(&self, index: usize) -> bool;
@@ -328,8 +334,8 @@ pub trait IndexedDataContainer: DataContainer {
         invalid
     }
 
-    /// Create a new data container using a set of range indices.
-    fn new_from_indices(&self, indices: &[usize]) -> Self::Output;
+    ///// Create a new data container using a set of range indices.
+    // fn new_from_indices(&self, indices: &[usize]) -> Self::Output;
 }
 
 /// The Sequences trait defines generic functionality for
