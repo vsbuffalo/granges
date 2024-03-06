@@ -140,20 +140,23 @@ where
     }
 }
 
-// NOTE: not safe -- not used, so removed.
-// impl<C, T> GRanges<C, T>
-// where
-//     C: RangeContainer + Clone,
-// {
-//     /// Create a new [`GRanges`] object by cloning the ranges of this one,
-//     /// and associating the supplied data with it (this consumes the data).
-//     pub fn clone_with_data<D>(&self, data: Option<D>) -> GRanges<C, D> {
-//         GRanges {
-//             ranges: self.ranges.clone(),
-//             data,
-//         }
-//     }
-// }
+impl<C, T> GRanges<C, T>
+where
+    C: RangeContainer + Clone,
+{
+    /// Create a new [`GRanges`] object by cloning the ranges of this one,
+    /// and associating the supplied data with it (this consumes the data).
+    ///
+    /// Note that this is *not* guaranteed to be safe - a panic may result
+    /// if the developer has used ranges with invalid indices (e.g. 
+    /// do not point to valid elements in the data container).
+    pub fn clone_with_data<D>(&self, data: Option<D>) -> GRanges<C, D> {
+        GRanges {
+            ranges: self.ranges.clone(),
+            data,
+        }
+    }
+}
 
 impl<C> GRangesEmpty<C>
 where
