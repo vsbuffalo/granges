@@ -133,11 +133,14 @@ where
         std::mem::take(&mut self.ranges)
     }
 
+    /// Take both the ranges and data from a [`GRanges`] object,
+    /// returning them in a tuple.
     pub fn take_both(&mut self) -> Result<(GenomeMap<C>, T), GRangesError> {
         let data = std::mem::take(&mut self.data).ok_or(GRangesError::NoDataContainer)?;
         let ranges = std::mem::take(&mut self.ranges);
         Ok((ranges, data))
     }
+
 }
 
 impl<C, T> GRanges<C, T>
@@ -219,8 +222,9 @@ impl<'a, C, T> AsGRangesRef<'a, C, T> for GRanges<C, T> {
     }
 }
 
-impl<'a, T> GenomicRangesTsvSerialize<'a, VecRangesIndexed> for GRanges<VecRangesIndexed, T>
+impl<'a, C, T> GenomicRangesTsvSerialize<'a, C> for GRanges<C, T>
 where
+    C: IterableRangeContainer,
     T: IndexedDataContainer + 'a,
     <T as IndexedDataContainer>::Item<'a>: Serialize,
 {
@@ -439,6 +443,18 @@ where
         }
         Ok(all_midpoints)
     }
+
+    /// Get the total coverage (the sum of all range widths).
+    pub fn coverage(&self) -> Position {
+        let mut coverage = 0;
+        for (_seqname, ranges) in self.ranges.iter() {
+            for range in ranges.iter_ranges() {
+                coverage += range.width()
+            }
+        }
+        coverage
+    }
+
 }
 
 impl<C, T> GRanges<C, T>
@@ -701,6 +717,11 @@ where
     /// which will truncate them.
     pub fn midpoints(&self) -> Result<GenomeMap<Vec<Position>>, GRangesError> {
         self.0.midpoints()
+    }
+
+    /// Get the total coverage (the sum of all range widths).
+    pub fn coverage(&self) -> Position {
+        self.0.coverage()
     }
 }
 

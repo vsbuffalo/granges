@@ -57,6 +57,14 @@ pub fn build_tsv_writer_with_config(
         None => Box::new(io::stdout()),
     };
 
+    // Write metadata, if there.
+    if let Some(metadata_rows) = &config.metadata {
+        for metadata_row in metadata_rows {
+            writeln!(writer_boxed, "#{}", metadata_row)?;
+        }
+    }
+
+    // Write headers, if there.
     if let Some(headers) = &config.headers {
         writeln!(writer_boxed, "{}", headers.join("\t"))?;
     }
@@ -955,6 +963,7 @@ impl FeatureDensity {
                 let config = TsvConfig {
                     no_value_string: "NA".to_string(),
                     headers: Some(headers),
+                    metadata: None,
                 };
                 window_counts.write_to_tsv(self.output.as_ref(), &config)?;
             }
@@ -966,6 +975,7 @@ impl FeatureDensity {
             let config = TsvConfig {
                 no_value_string: "NA".to_string(),
                 headers: Some(headers),
+                metadata: None,
             };
             window_counts.write_to_tsv(self.output.as_ref(), &config)?;
         }
