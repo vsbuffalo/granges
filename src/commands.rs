@@ -838,7 +838,7 @@ impl FeatureDensity {
                 .left_overlaps(&gr)?
                 .map_joins(|joins| {
                     // these are merged, so this is the number of *unique* basepairs
-                    let total_overlaps: Position = joins.join.overlaps().iter().cloned().sum();
+                    let total_overlaps: Position = joins.join.overlap_widths().iter().cloned().sum();
                     total_overlaps
                 })?
             .take_data()?;

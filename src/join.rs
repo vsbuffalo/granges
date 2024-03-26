@@ -28,7 +28,7 @@ impl GenericRange for RangeTuple {
     }
 }
 
-/// This is a special "reduced" range that stores indices
+/// This is a special "reduced" or flattened range that stores indices
 /// to multiple data elements.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RangeReduced((Position, Position, HashSet<Option<usize>>));
@@ -146,16 +146,16 @@ impl LeftGroupedJoin {
 
     /// Return whether this left range has any [`LeftGroupedJoin`].
     pub fn has_overlaps(&self) -> bool {
-        !self.overlaps().is_empty()
+        !self.overlap_widths().is_empty()
     }
 
     /// Retrieve the number of right overlaps.
     pub fn num_overlaps(&self) -> usize {
-        self.overlaps().len()
+        self.overlap_widths().len()
     }
 
-    /// Retrieve the right overlaps.
-    pub fn overlaps(&self) -> Vec<Position> {
+    /// Retrieve the right overlap widths.
+    pub fn overlap_widths(&self) -> Vec<Position> {
         self.rights
             .iter()
             .map(|r| r.overlap_width(&self.left))
