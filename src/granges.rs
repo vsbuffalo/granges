@@ -241,10 +241,11 @@ where
         config: &TsvConfig,
     ) -> Result<(), GRangesError> {
         let mut writer = build_tsv_writer_with_config(output, config)?;
+        let seqnames = &self.ranges.sorted_keys;
 
         for range in self.iter_ranges() {
             let record = range.to_record(
-                &self.seqnames(),
+                &seqnames,
                 self.data.as_ref().ok_or(GRangesError::NoDataContainer)?,
             );
             writer.serialize(record)?;
@@ -268,10 +269,11 @@ impl<'a, R: IterableRangeContainer> GenomicRangesTsvSerialize<'a, R> for GRanges
         output: Option<impl Into<PathBuf>>,
         config: &TsvConfig,
     ) -> Result<(), GRangesError> {
+        let seqnames = &self.0.ranges.sorted_keys;
         let mut writer = build_tsv_writer_with_config(output, config)?;
 
         for range in self.iter_ranges() {
-            let record = range.to_record_empty::<()>(&self.seqnames());
+            let record = range.to_record_empty::<()>(&seqnames);
             writer.serialize(record)?;
         }
 
@@ -738,11 +740,8 @@ impl<U> GRanges<VecRangesIndexed, Vec<U>> {
             self.data = Some(Vec::new());
         }
         let data_ref = self.data.as_mut().ok_or(GRangesError::NoDataContainer)?;
-        // push data to the vec data container, getting the index
-        let index: usize = {
-            data_ref.push(data);
-            data_ref.len() - 1 // new data index
-        };
+        let index = data_ref.len();
+        data_ref.push(data);
         // push an indexed range
         let range = RangeIndexed::new(start, end, index);
         let range_container = self
@@ -797,11 +796,8 @@ impl<'a, DL, DR> GRanges<VecRangesIndexed, JoinData<'a, DL, DR>> {
             panic!("Internal error: JoinData not initialized.");
         }
         let data_ref = self.data.as_mut().ok_or(GRangesError::NoDataContainer)?;
-        // push data to the vec data container, getting the index
-        let index: usize = {
-            data_ref.push(data);
-            data_ref.len() - 1 // new data index
-        };
+        let index = data_ref.len();
+        data_ref.push(data);
         // push an indexed range
         let range = RangeIndexed::new(start, end, index);
         let range_container = self
@@ -1872,7 +1868,7 @@ mod tests {
         let seqnames = sl.keys().map(|x| x.to_string()).collect::<Vec<_>>();
         let actual_ranges: Vec<(String, Position, Position)> = gr
             .iter_ranges()
-            .map(|r| (r.seqname(&seqnames), r.start(), r.end()))
+            .map(|r| (r.seqname(&seqnames).to_string(), r.start(), r.end()))
             .collect();
         assert_eq!(actual_ranges, expected_ranges_chop);
 
@@ -1904,7 +1900,7 @@ mod tests {
 
         let actual_ranges: Vec<(String, Position, Position)> = gr
             .iter_ranges()
-            .map(|r| (r.seqname(&seqnames), r.start(), r.end()))
+            .map(|r| (r.seqname(&seqnames).to_string(), r.start(), r.end()))
             .collect();
 
         assert_eq!(actual_ranges, expected_ranges_no_chop);

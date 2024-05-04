@@ -163,10 +163,30 @@ impl AdjustableGenericRange for RangeIndexed {
     }
 }
 
+/// Represents a genomic range entry with some borrowed data.
+/// This is used primarily as a temporary store for deserializing
+/// a genomic range.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct GenomicRangeRecordEmptyBorrowed<'a> {
+    pub seqname: &'a str,
+    pub start: Position,
+    pub end: Position,
+}
+
+/// Represents a genomic range entry with some borrowed data.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct GenomicRangeRecordBorrowed<'a, U> {
+    pub seqname: &'a str,
+    pub start: Position,
+    pub end: Position,
+    pub data: U,
+}
+
 /// Represents a genomic range entry with some data.
 ///
 /// This is used as a type for holding a range with associated data directly
-/// from a parser.
+/// from a parser. Thus it owns the memory it uses for the seqname and the
+/// data.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct GenomicRangeRecord<U> {
     pub seqname: String,
@@ -364,29 +384,30 @@ impl GenomicRangeIndexedRecord {
     }
     /// Using the *corresponding ordered* sequence names the `seqname_index` indices
     /// correspond to, get the sequence name.
-    pub fn seqname(&self, seqnames: &[String]) -> String {
-        seqnames[self.seqname_index].clone()
+    pub fn seqname<'a>(&'a self, seqnames: &'a [String]) -> &String {
+        &seqnames[self.seqname_index]
     }
     pub fn to_record<'a, T>(
         self,
-        seqnames: &[String],
+        seqnames: &'a[String],
         data: &'a T,
-    ) -> GenomicRangeRecord<<T as IndexedDataContainer>::Item<'a>>
+    ) -> GenomicRangeRecordBorrowed<'a, <T as IndexedDataContainer>::Item<'a>>
     where
         T: IndexedDataContainer,
     {
         let data = data.get_value(self.index().unwrap());
 
-        GenomicRangeRecord {
-            seqname: seqnames[self.seqname_index].clone(),
+        GenomicRangeRecordBorrowed {
+            seqname: &seqnames[self.seqname_index],
             start: self.start,
             end: self.end,
             data,
         }
     }
-    pub fn to_record_empty<T>(self, seqnames: &[String]) -> GenomicRangeRecordEmpty {
-        GenomicRangeRecordEmpty {
-            seqname: seqnames[self.seqname_index].clone(),
+    pub fn to_record_empty<'a, T>(self, seqnames: &'a[String]) -> 
+        GenomicRangeRecordEmptyBorrowed<'a> {
+        GenomicRangeRecordEmptyBorrowed {
+            seqname: &seqnames[self.seqname_index],
             start: self.start,
             end: self.end,
         }
