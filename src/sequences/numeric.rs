@@ -89,12 +89,12 @@ where
         end: Position,
     ) -> Result<V, GRangesError>
     where
-        F: for<'b> Fn(Self::Slice<'b>) -> V,
+        F: for<'b> Fn(Self::Slice<'b>, (&str, Position, Position)) -> V,
     {
         let seq = self.get_sequence(seqname)?;
         let range = try_range(start, end, seq.len().try_into().unwrap())?;
         let view = seq.slice(s![range]);
-        Ok(func(view))
+        Ok(func(view, (seqname, start, end)))
     }
 
     fn get_sequence_length(&self, seqname: &str) -> Result<Position, GRangesError> {
@@ -204,6 +204,7 @@ where
     /// # Examples
     ///
     /// ```
+    /// use crate::granges::prelude::Position;
     /// use crate::granges::traits::Sequences;
     /// use granges::sequences::numeric::NumericSequences1;
     /// use granges::test_utilities::random_array1_sequences;
@@ -213,7 +214,7 @@ where
     /// let mut data = random_array1_sequences(100);
     /// let numeric_seq = NumericSequences1::new(data);
     /// let result = numeric_seq.region_map(
-    ///     &|view: ArrayView1<'_, f64> | view.sum(),
+    ///     &|view: ArrayView1<'_, f64>, _: (&str, Position, Position)| view.sum(),
     ///     "chr1",
     ///     0,
     ///     10
@@ -227,13 +228,13 @@ where
         end: Position,
     ) -> Result<V, GRangesError>
     where
-        F: for<'b> Fn(Self::Slice<'_>) -> V,
+        F: for<'b> Fn(Self::Slice<'_>, (&str, Position, Position)) -> V,
     {
         let seq = self.get_sequence(seqname)?;
         let range = try_range(start, end, seq.len().try_into().unwrap())?;
         let seq = self.get_sequence(seqname)?;
         let view = seq.slice(s![range, ..]);
-        Ok(func(view))
+        Ok(func(view, (seqname, start, end)))
     }
 
     /// Retrieves the length of a specific sequence.
@@ -355,12 +356,12 @@ where
         end: Position,
     ) -> Result<V, GRangesError>
     where
-        F: for<'b> Fn(ArrayView2<'b, T>) -> V,
+        F: for<'b> Fn(ArrayView2<'b, T>, (&str, Position, Position)) -> V,
     {
         let seq = self.get_sequence(seqname)?;
         let range = try_range(start, end, seq.len().try_into().unwrap())?;
         let view = seq.slice(s![range, ..]);
-        let value = func(view);
+        let value = func(view, (seqname, start, end));
         Ok(value)
     }
 

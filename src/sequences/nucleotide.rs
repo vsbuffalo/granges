@@ -169,12 +169,12 @@ impl Sequences for NucleotideSequences {
         end: Position,
     ) -> Result<V, GRangesError>
     where
-        F: Fn(Self::Slice<'_>) -> V,
+        F: Fn(Self::Slice<'_>, (&str, Position, Position)) -> V,
     {
         let seq = self.get_sequence(seqname)?;
         let range = try_range(start, end, seq.len().try_into().unwrap())?;
         let data = &seq[range];
-        Ok(func(data))
+        Ok(func(data, (&seqname, start, end)))
     }
 
     /// Get the length of a particular sequence.
@@ -303,11 +303,11 @@ impl Sequences for LazyNucleotideSequences {
         end: Position,
     ) -> Result<V, GRangesError>
     where
-        F: for<'b> Fn(&'b [u8]) -> V,
+        F: for<'b> Fn(&'b [u8], (&str, Position, Position)) -> V,
     {
         let seq = self.get_sequence(seqname)?;
         let range = try_range(start, end, seq.len().try_into().unwrap())?;
-        Ok(func(&seq[range]))
+        Ok(func(&seq[range], (seqname, start, end)))
     }
 
     /// Get the length of a particular sequence.
@@ -382,7 +382,7 @@ pub fn gc_content(seq: &[u8]) -> f64 {
 ///
 /// # Arguments
 /// * `seq` - a byte slice.
-pub fn gc_content_strict(seq: &[u8]) -> f64 {
+pub fn gc_content_strict(seq: &[u8], _: (&str, Position, Position)) -> f64 {
     let gc_count = seq
         .iter()
         .filter(|&&base| matches!(base.to_ascii_uppercase(), b'G' | b'C'))
@@ -402,7 +402,7 @@ pub fn gc_content_strict(seq: &[u8]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{gc_content_strict, LazyNucleotideSequences, NucleotideSequences};
-    use crate::{granges::GRangesEmpty, sequences::nucleotide::Nucleotides, traits::Sequences};
+    use crate::{granges::GRangesEmpty, sequences::nucleotide::Nucleotides, traits::Sequences, Position};
 
     #[test]
     fn test_nucleotide_sequences() {
@@ -438,7 +438,7 @@ mod tests {
         // chromosome sequence length through the apply funcs
         let seq1_len = seqlens.get("chr1").unwrap();
 
-        fn get_len(seq: &[u8]) -> usize {
+        fn get_len(seq: &[u8], _: (&str, Position, Position)) -> usize {
             seq.len()
         }
 
@@ -473,7 +473,7 @@ mod tests {
         // len([l for l in 'TTCACTACTATTAGTACTCACGGCGCAATA'[3:10] if l == 'C'])
         let total_Cs = reference
             .region_map(
-                &|seq| seq.iter().filter(|c| **c == b'C').count(),
+                &|seq, _| seq.iter().filter(|c| **c == b'C').count(),
                 "chr1",
                 3,
                 10,
@@ -486,7 +486,7 @@ mod tests {
         // len([l for l in 'TTCACTACTATTAGTACTCACGGCGCAATA'[3:10] if l == 'A'])
         let total_As = reference
             .region_map(
-                &|seq| seq.iter().filter(|c| **c == b'A').count(),
+                &|seq, _| seq.iter().filter(|c| **c == b'A').count(),
                 "chr1",
                 3,
                 10,
@@ -505,7 +505,7 @@ mod tests {
 
         let windows = GRangesEmpty::from_windows(&seqlens, 10, None, false).unwrap();
 
-        let make_string = |seq: &[u8]| String::from_utf8(seq.to_vec()).unwrap();
+        let make_string = |seq: &[u8], _: (&str, Position, Position)| String::from_utf8(seq.to_vec()).unwrap();
 
         // our test: get subsequences (as Strings), with *no step*, and reconstruct the
         // original sequence

@@ -405,6 +405,7 @@ pub type PositionOffset = i64;
 
 /// The main exports of the GRanges library.
 pub mod prelude {
+    pub use crate::{Position, PositionOffset};
     pub use crate::error::GRangesError;
     pub use crate::granges::{GRanges, GRangesEmpty};
     pub use crate::io::file::read_seqlens;

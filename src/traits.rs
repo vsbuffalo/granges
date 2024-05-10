@@ -354,7 +354,8 @@ pub trait Sequences {
     /// Apply a function on a [`Sequences::Slice`] of a sequence.
     ///
     /// # Arguments
-    /// * `func` - a function that takes a `Self::Slice` and returns a [`Result<V, GRangesError>`]
+    /// * `func` - a function that takes a `Self::Slice`, `start`, and `end` positions
+    ///            and returns a [`Result<V, GRangesError>`].
     /// * `seqname` - sequence name.
     /// * `start` - a [`Position`] start position.
     /// * `end` - a [`Position`] *inclusive* end position.
@@ -370,6 +371,11 @@ pub trait Sequences {
     ///
     /// to validate the range and to avoid panics.
     ///
+    /// Note that the `start` and `end` positions can often be ignored 
+    /// by the function processing the `Slice`. However, this information
+    /// is useful when functions need to know the slice coordinates to 
+    /// e.g. combine with other data in this region.
+    ///
     fn region_map<V, F>(
         &self,
         func: &F,
@@ -378,7 +384,7 @@ pub trait Sequences {
         end: Position,
     ) -> Result<V, GRangesError>
     where
-        F: Fn(<Self as Sequences>::Slice<'_>) -> V;
+        F: Fn(<Self as Sequences>::Slice<'_>, (&str, Position, Position)) -> V;
 
     fn seqlens(&self) -> Result<IndexMap<String, Position>, GRangesError> {
         let mut seqlens = IndexMap::new();
@@ -401,7 +407,7 @@ pub trait Sequences {
     where
         V: Clone,
         C: IterableRangeContainer + 'b,
-        F: Fn(<Self as Sequences>::Slice<'_>) -> V,
+        F: Fn(<Self as Sequences>::Slice<'_>, (&str, Position, Position)) -> V,
     {
         let granges_ref = granges.as_granges_ref();
         let seqlens = &granges_ref.seqlens().clone();
