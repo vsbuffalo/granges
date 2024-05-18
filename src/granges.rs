@@ -491,7 +491,8 @@ where
         for (seqname, indices) in self.data_indices()? {
             let mut new_data = Vec::new();
             for index in indices {
-                let value = data.get(index).unwrap();
+                let value = data.get(index)
+                    .expect("Invalid index in GRanges::data_by_seqname(). This indicates invalid data indices (developer error).");
                 new_data.push((*value).clone());
             }
             all_new_data.insert(&seqname, new_data)?;

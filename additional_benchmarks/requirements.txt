@@ -1,0 +1,6 @@
+snakemake
+numpy
+scipy
+matplotlib
+bedtools
+R

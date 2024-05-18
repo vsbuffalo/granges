@@ -1,0 +1,221 @@
+import numpy as np
+
+RSCRIPT = "~/.conda/envs/granges_benchmark/bin/Rscript"
+GRANGES = "../target/release/granges"
+SEQLENS = "../tests_data/hg38_seqlens.tsv"
+NREPS = 100
+
+localrules: granges, windows
+
+rule granges:
+  output: GRANGES
+  shell:
+    """
+    (cargo build --release --features=dev-commands)
+    """
+
+## ----- random BED files -----
+
+rule random_bed:
+  input: seqlens=SEQLENS, granges=GRANGES
+  output: "random_bed/{size,[0-9]+}__{rep}.bed.gz"
+  resources:
+      runtime=30,
+      mem_mb_per_cpu=1800,
+      cpus_per_task=28
+  shell:
+     """
+     {input.granges} random-bed --sort --num {wildcards.size} {input.seqlens} | gzip > {output}
+     """
+
+rule random_bed_scores:
+  input: seqlens=SEQLENS, granges=GRANGES
+  output: "random_bed/scores/{size,[0-9]+}__{rep}.bed.gz"
+  resources:
+      runtime=30,
+      mem_mb_per_cpu=1800,
+      cpus_per_task=28
+  shell:
+     """
+     {input.granges} random-bed --sort --num {wildcards.size} --scores {input.seqlens} | gzip > {output}
+     """
+
+rule windows:
+  input: seqlens=SEQLENS, granges=GRANGES
+  output: "windows/width_{width}.bed"
+  shell:
+     """
+     {input.granges} windows --genome {input.seqlens} --width {wildcards.width} --output {output}
+     """
+
+
+## ----- granges filter / bedtools intersect / plyranges join overlap inner -----
+
+rule granges_filter:
+  input: a="random_bed/{size}__A.bed.gz", b="random_bed/{size}__B.bed.gz", 
+         genome=SEQLENS, granges=GRANGES
+  output: "results/granges_filter__size_{size}.bed"
+  benchmark: repeat("benchmarks/granges_filter__size_{size}.tsv", NREPS)
+  resources:
+      partition="savio3",
+      runtime=600,
+      mem_mb=96000,
+      cpus_per_task=40
+  shell:
+     """
+     {input.granges} filter --left {input.a} --right {input.b} --genome {input.genome} > {output}
+     """
+ 
+rule bedtools_intersect:
+  input: a="random_bed/{size}__A.bed.gz", b="random_bed/{size}__B.bed.gz"
+  output: "results/bedtools_intersect__size_{size}.bed"
+  benchmark: repeat("benchmarks/bedtools_intersect__size_{size}.tsv", NREPS)
+  resources:
+      partition="savio3",
+      runtime=600,
+      mem_mb=96000,
+      cpus_per_task=40
+  shell:
+     """
+     bedtools intersect -a {input.a} -b {input.b} > {output}
+     """
+
+rule plyranges_join_overlap_inner:
+  input: a="random_bed/{size}__A.bed.gz", b="random_bed/{size}__B.bed.gz"
+  output: "results/plyranges_join_overlap_inner__size_{size}.bed"
+  params: rscript = RSCRIPT
+  benchmark: repeat("benchmarks/plyranges_join_overlap_inner__size_{size}.tsv", NREPS)
+  resources:
+      partition="savio3",
+      runtime=600,
+      mem_mb=96000,
+      cpus_per_task=40
+  shell:
+     """
+     {params.rscript} rscripts/plyranges_join_overlap_inner.r {input.a} {input.b} {output}
+     """
+
+## ----- granges map / bedtools map -----
+WINDOWS = "windows/width_100000.bed"
+
+rule granges_map:
+  input: left=WINDOWS, right="random_bed/scores/{size}__A.bed.gz",
+         genome=SEQLENS, granges=GRANGES
+  output: "results/granges_map__size_{size}.bed"
+  benchmark: repeat("benchmarks/granges_map__size_{size}.tsv", NREPS)
+  resources:
+      partition="savio3",
+      runtime=600,
+      mem_mb=96000,
+      cpus_per_task=40
+  shell:
+     """
+     {input.granges} map --left {input.left} --right {input.right} --genome {input.genome} --func "min,max,mean,sum,median" --output {output}
+     """
+ 
+rule bedtools_map:
+  input: left=WINDOWS, right="random_bed/scores/{size}__A.bed.gz"
+  output: "results/bedtools_map__size_{size}.bed"
+  benchmark: repeat("benchmarks/bedtools_map__size_{size}.tsv", NREPS)
+  resources:
+      partition="savio3",
+      runtime=600,
+      mem_mb=96000,
+      cpus_per_task=40
+  shell:
+     """
+     bedtools map -a {input.left} -b {input.right} -c 5 -o "min,max,mean,sum,median" > {output}
+     """
+
+rule plyranges_map:
+  input:
+    left=WINDOWS,
+    right="random_bed/scores/{size}__A.bed.gz"
+  output:
+    "results/plyranges_map__size_{size}.bed"
+  benchmark:
+    repeat("benchmarks/plyranges_map__size_{size}.tsv", NREPS)
+  resources:
+    partition="savio3",
+    runtime=1000,
+    mem_mb=96000,
+    cpus_per_task=40
+  params: rscript = RSCRIPT
+  shell:
+    """
+    {params.rscript} rscripts/plyranges_map.r {input.left} {input.right} {output}
+    """
+
+
+tools = ["bedtools_intersect", "granges_filter", "plyranges_join_overlap_inner"]
+tools += ["bedtools_map", "granges_map", "plyranges_map"]
+
+# BED file sizes
+sizes = np.logspace(3, 7, 10).astype('int')
+
+all_results = expand("results/{tool}__size_{size}.bed", tool=tools, size=sizes)
+
+rule all:
+   input: all_results
+
+
+rule combine:
+  input: expand("benchmarks/{tool}__size_{size}.tsv", tool=tools, size=sizes)
+  output: "combined_benchmarks.tsv"
+  run:
+    import pandas as pd
+
+    def read_tsv(file):
+        return pd.read_csv(file, sep="\t")
+
+    dfs = []
+    for tool in tools:
+        for size in sizes:
+            file = f"benchmarks/{tool}__size_{size}.tsv"
+            df = read_tsv(file)
+            df["tool"] = tool
+            df["size"] = size
+            dfs.append(df)
+
+    combined_df = pd.concat(dfs, ignore_index=True)
+    combined_df.to_csv(output[0], sep="\t", index=False)
+
+rule figure:
+  input: "combined_benchmarks.tsv"
+  output: "benchmark_figure.pdf"
+  run:
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
+    import pandas as pd
+    import numpy as np
+    mpl.use('agg')
+
+    d = pd.read_csv(input[0], sep="\t")
+    ds = d.groupby(['tool', 'size'], as_index=False)['s'].median()
+    ds = ds.loc[ds['size'] > 1e3]
+
+    tools = d['tool'].unique()
+    num_tools = len(tools)
+    colors = plt.cm.Paired.colors
+
+    fig, ax = plt.subplots()
+
+    i = 0
+    for tool in ds['tool'].unique():
+        data = ds[ds['tool'] == tool]
+        tool, cmd = tool.split('_')[:2]
+
+        color = colors[i]
+        i += 1
+        ax.plot(data['size'], data['s'], '-o', label=f"{tool} {cmd}", color=color,)
+
+    ax.semilogx()
+    ax.semilogy()
+    ax.set_xlabel('Number of BED ranges')
+    ax.set_ylabel('Time (s)')
+    ax.legend(fontsize=8, frameon=False)
+    plt.tight_layout()
+    plt.savefig(output[0])
+
+rule merge:
+  input: "benchmark_figure.pdf"
