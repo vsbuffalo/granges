@@ -3,13 +3,18 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use granges::{
     commands::{
-        granges_adjust, granges_filter, granges_flank, granges_map, granges_windows, FilterChroms,
-        FeatureDensity, Merge, ProcessingMode,
+        granges_adjust, granges_filter, granges_flank, granges_map, granges_windows,
+        FeatureDensity, FilterChroms, Merge, ProcessingMode,
     },
     data::operations::FloatOperation,
     prelude::GRangesError,
     Position, PositionOffset,
 };
+
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 #[cfg(feature = "dev-commands")]
 use granges::commands::granges_random_bed;
